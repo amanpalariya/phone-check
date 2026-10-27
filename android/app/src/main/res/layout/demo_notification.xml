@@ -1,0 +1,4 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="12dp">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Custom test layout" android:textStyle="bold" android:textAppearance="@android:style/TextAppearance.Material.Notification.Title" />
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="This layout stays on Android. The Mac receives a readable fallback." android:textAppearance="@android:style/TextAppearance.Material.Notification" />
+</LinearLayout>

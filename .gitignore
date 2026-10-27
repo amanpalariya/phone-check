@@ -1,0 +1,11 @@
+# Local tooling and builds
+.DS_Store
+.gradle/
+**/build/
+**/.build/
+android/local.properties
+.idea/
+*.iml
+*.xcuserstate
+.env
+__pycache__/
