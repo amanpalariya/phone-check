@@ -252,6 +252,21 @@ final class NotificationPaneSurface: NSView {
             .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
             .sink { [weak self] _ in self?.updateTransparency(NotificationAppearance.shared.transparency) }
         updateTransparency(NotificationAppearance.shared.transparency)
+        updateBackdropAppearance()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        updateBackdropAppearance()
+    }
+
+    private func updateBackdropAppearance() {
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        // Invert only the backdrop. Cards and controls retain the system appearance.
+        backdrop.appearance = NSAppearance(named: dark ? .aqua : .darkAqua)
+        if #available(macOS 26.0, *), let glass = backdrop as? NSGlassEffectView {
+            glass.tintColor = (dark ? NSColor.white : NSColor.black).withAlphaComponent(0.18)
+        }
     }
 
     private func updateTransparency(_ value: Double) {

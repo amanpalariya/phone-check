@@ -192,3 +192,13 @@ Additional device checks:
   **Appearance…**, confirming the saved-preference control in the actual installed panel;
   left Appearance open for the user. The paired phone reconnected and its notification
   count resumed. No phone-side dismissal/reply commands were exercised in this change.
+
+## Opposite-tone backdrop — October 28, 2026
+
+- Backdrop appearance now follows the opposite of the surrounding system appearance:
+  dark in light mode, light in dark mode. Clear glass receives a matching restrained tint;
+  cards and controls continue to inherit the system appearance. Effective-appearance
+  changes update the backdrop immediately without changing the saved transparency value.
+- Debug/review/release builds and native-pane checks passed, including live light/dark
+  appearance switching and verification that notification content retains its appearance.
+  Inspected the actual patterned-background preview in both modes. Updated the installed app.

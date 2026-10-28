@@ -94,6 +94,16 @@ func runPaneChecks() {
         let blur = surface.backdrop as! NSVisualEffectView
         precondition(blur.blendingMode == .behindWindow && blur.maskImage != nil)
     }
+    let originalAppearance = surface.appearance
+    for (system, backdrop) in [(NSAppearance.Name.aqua, NSAppearance.Name.darkAqua), (.darkAqua, .aqua)] {
+        surface.appearance = NSAppearance(named: system)
+        settle()
+        precondition(surface.backdrop.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == backdrop,
+                     "Backdrop must use the opposite appearance")
+        precondition(surface.host.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == system,
+                     "Notification content must keep the system appearance")
+    }
+    surface.appearance = originalAppearance
     precondition(surface.host.frame == surface.bounds, "Content must follow the anchored surface")
     func checkScroll(_ view: NSView) {
         if let scroll = view as? NotificationOverlayScrollView {
