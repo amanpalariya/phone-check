@@ -265,3 +265,34 @@ Additional device checks:
   filtering down to one notification and shrinking the wash, and the dark backdrop with
   light-mode cards. Updated and signature-verified the installed app. Phone-side commands
   were not exercised for this presentation change.
+
+## Header card, closer anchoring, and subtle blur-only renderer — October 28, 2026
+
+- Grouped the Phone Check header, status/count and search field into one surface shared
+  with notification cards. Testbed controls stay inside that surface. The feed accepts an
+  external query binding so search remains functional without a second search field.
+- Reduced the menu-bar gap to 2 points and pane content inset to 6 points (previously 6
+  plus 32). Updated backdrop geometry and placement checks to preserve the localized wash.
+- Reproduced the user's observation that dimming a stock material was not providing the
+  desired visible blur. Added a comparison against a blur-only compositor layer over sharp,
+  colored text. The user confirmed the right-hand renderer blurred that background, judged
+  radius 22 too harsh, then confirmed radius 4 was recognizable but requested still less.
+  The app defaults to 2 and saves a separate Blur amount slider (0–12), independent of the
+  existing transparency/strength preference. Edges retain the content-sized soft mask.
+- Isolated undocumented CABackdropLayer/CAFilter/window-hosting hooks in
+  CompositorBackdrop.swift, limited to macOS 26–27 with runtime capability checks. Kept
+  protected-content substitution enabled and no pixel readback/screen-recording pipeline.
+  Older/unsupported systems and Reduce Transparency retain the standard-material fallback.
+  The slider is shown only where the blur-only renderer is available. This is not an App
+  Store-safe API path, and future OS compatibility requires revalidation before extending
+  the supported version range. Spaces/full-screen transitions remain unverified.
+- Debug/review/release builds and native panel checks passed during implementation. Checks
+  cover renderer selection, shared localized mask bounds, closer icon anchoring, dark
+  background, scrolling/fade and existing panel interactions. Live preview verified the
+  combined header/search card and filtering from the relocated search field. Standalone
+  companion render passed horizontal-overflow and native scrolling layout checks.
+- Installed build updated after final verification. Window screenshots showed a solid
+  backdrop while the user confirmed live blur; actual blur validation came from
+  the user's on-screen comparison. The final radius-2 integrated pane remains subject to
+  the user's visual preference; the setting allows immediate adjustment. No paired-phone
+  actions were issued for this presentation change.

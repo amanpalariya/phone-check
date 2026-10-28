@@ -26,6 +26,10 @@ struct MaterialReview {
             return
         }
         app.setActivationPolicy(.regular)
+        if CommandLine.arguments.contains("--blur-probe") {
+            runBlurProbe()
+            return
+        }
         if CommandLine.arguments.contains("--blur-review") || CommandLine.arguments.contains("--pane-blur-review") {
             runBlurReview()
             return
@@ -248,7 +252,7 @@ private func runBlurReview() {
                                        feedMaximumHeight: 360, contentHeightChanged: { [weak content] height in
                                            content?.subviews.compactMap { $0 as? NotificationPaneSurface }.first?.setContentHeight(height)
                                        })
-                .padding(.top, 32).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)))
+                .padding(.top, NotificationPaneLayout.contentTopInset).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)))
         content.addSubview(surface)
     } else {
         for (index, sample) in materials.enumerated() {
@@ -287,4 +291,42 @@ private final class BlurReviewPattern: NSView {
                 withAttributes: [.font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.black])
         }
     }
+}
+
+
+// Diagnostic only: compare a pure compositor blur to the public material.
+private func runBlurProbe() {
+    let parent = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 600),
+                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
+    parent.title = "Backdrop blur probe"
+    parent.contentView = BlurReviewPattern(frame: NSRect(x: 0, y: 0, width: 920, height: 600))
+    parent.center()
+    parent.makeKeyAndOrderFront(nil)
+    let frame = parent.convertToScreen(NSRect(x: 0, y: 0, width: 920, height: 600))
+    let panel = NotificationPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    panel.title = "Compositor blur comparison"
+    panel.isOpaque = false
+    panel.backgroundColor = NSColor.white.withAlphaComponent(0.001)
+    panel.hasShadow = false
+    let canvas = NSView(frame: NSRect(origin: .zero, size: frame.size))
+    canvas.wantsLayer = true
+    let material = NSVisualEffectView(frame: NSRect(x: 30, y: 60, width: 400, height: 440))
+    material.material = .underWindowBackground
+    material.blendingMode = .behindWindow
+    material.state = .active
+    canvas.addSubview(material)
+    let pure = CompositorBackdrop(frame: NSRect(x: 480, y: 60, width: 400, height: 440))
+    pure.radius = 4 // The comparison level judged by the user; the app defaults to 2.
+    canvas.addSubview(pure)
+    for (title, x) in [("Public material", 30), ("Pure compositor blur", 480)] {
+        let label = NSTextField(labelWithString: title)
+        label.frame = NSRect(x: x, y: 520, width: 400, height: 30)
+        label.font = .boldSystemFont(ofSize: 20)
+        canvas.addSubview(label)
+    }
+    panel.contentView = canvas
+    parent.addChildWindow(panel, ordered: .above)
+    panel.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+    withExtendedLifetime((parent, panel)) { NSApp.run() }
 }

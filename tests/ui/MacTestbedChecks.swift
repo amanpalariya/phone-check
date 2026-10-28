@@ -65,7 +65,7 @@ func runPaneChecks() {
     let screen = NSRect(x: -1440, y: 180, width: 1440, height: 850)
     let anchor = NSRect(x: -800, y: screen.maxY, width: 30, height: 24)
     let frame = NotificationPaneLayout.frame(in: screen, anchor: anchor)
-    precondition(frame.midX == anchor.midX && frame.maxY == anchor.minY - 6)
+    precondition(frame.midX == anchor.midX && frame.maxY == anchor.minY - 2)
     precondition(frame.height == 680 && screen.contains(frame), "Pane must fit secondary screens with negative origins")
     for x in [screen.minX, screen.maxX - 20] {
         let edge = NotificationPaneLayout.frame(in: screen, anchor: NSRect(x: x, y: screen.maxY, width: 20, height: 24))
@@ -91,6 +91,12 @@ func runPaneChecks() {
     let surface = panel.contentView as! NotificationPaneSurface
     precondition(surface.backdrop.material == .underWindowBackground)
     precondition(surface.backdrop.blendingMode == .behindWindow && surface.backdrop.maskImage != nil)
+    if surface.compositor.isAvailable && !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+        precondition(!surface.compositor.isHidden && surface.backdrop.isHidden,
+                     "Use the blur-only renderer when available")
+        precondition(surface.compositor.maskImage != nil && surface.compositor.frame == surface.backdrop.frame,
+                     "Real blur must share the localized, feathered bounds")
+    }
     let originalAppearance = surface.appearance
     for system in [NSAppearance.Name.aqua, .darkAqua] {
         surface.appearance = NSAppearance(named: system)
@@ -103,10 +109,10 @@ func runPaneChecks() {
     }
     surface.setContentHeight(120)
     surface.layoutSubtreeIfNeeded()
-    precondition(surface.backdrop.frame.height == 216, "A short list must not leave a panel-sized backdrop")
+    precondition(surface.backdrop.frame.height == 190, "A short list must not leave a panel-sized backdrop")
     surface.setContentHeight(300)
     surface.layoutSubtreeIfNeeded()
-    precondition(surface.backdrop.frame.height == 396, "Backdrop must follow visible content height")
+    precondition(surface.backdrop.frame.height == 370, "Backdrop must follow visible content height")
     NotificationAppearance.shared.usesSystemBackdrop = false
     settle()
     precondition(surface.backdrop.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,

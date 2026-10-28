@@ -29,6 +29,7 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
 
 private final class CompanionPresentation: ObservableObject {
     @Published var showsAppearance = false
+    @Published var query = ""
 }
 
 struct CompanionView: View {
@@ -40,7 +41,7 @@ struct CompanionView: View {
     @StateObject private var presentation = CompanionPresentation()
     var body: some View {
         VStack(spacing: 0) {
-            header
+            controlsCard
             if testbed.showsInPane {
                 testbedContent
             } else if !model.paired {
@@ -65,6 +66,7 @@ struct CompanionView: View {
         .onPreferenceChange(CompanionHeight.self, perform: contentHeightChanged)
         .tint(.accentColor)
         .onAppear { model.refreshAuthorization() }
+        .onChange(of: testbed.showsInPane) { _, _ in presentation.query = "" }
         .sheet(isPresented: $presentation.showsAppearance) { NotificationAppearanceSettings() }
         .confirmationDialog("Unpair phone?", isPresented: $model.confirmUnpair) {
             Button("Unpair", role: .destructive, action: model.unpair)
@@ -72,17 +74,37 @@ struct CompanionView: View {
         }
     }
 
+    private var controlsCard: some View {
+        VStack(spacing: 0) {
+            header
+            if testbed.showsInPane {
+                HStack {
+                    Text("Testbed").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Exit") { testbed.showsInPane = false }.buttonStyle(.borderless)
+                }.padding(.horizontal, 16).padding(.bottom, 8)
+            }
+            if showsSearch {
+                NotificationSearchField(text: $presentation.query)
+                    .padding(.horizontal, 12).padding(.bottom, 12)
+            }
+        }
+        .background { NotificationSurface() }
+        .padding(.horizontal, 10)
+    }
+
+    private var showsSearch: Bool {
+        let notices = testbed.showsInPane ? testbed.notices : model.notices
+        return !notices.isEmpty || !presentation.query.isEmpty
+    }
+
     private var testbedContent: some View {
         VStack(spacing: 8) {
-            HStack {
-                Text("Testbed").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Exit") { testbed.showsInPane = false }.buttonStyle(.borderless)
-            }.padding(.horizontal, 16)
             if testbed.notices.isEmpty {
                 Text("Add samples in the testbed.").foregroundStyle(.secondary).padding(24)
             } else {
-                NotificationFeed(notices: testbed.notices, commands: testbed.commands, maximumHeight: feedMaximumHeight)
+                NotificationFeed(notices: testbed.notices, commands: testbed.commands, maximumHeight: feedMaximumHeight,
+                                 search: $presentation.query, showsSearch: false)
             }
         }.padding(.bottom, 10)
     }
@@ -196,7 +218,8 @@ struct CompanionView: View {
                 .padding(.horizontal, 16).padding(.bottom, 8)
             }
             if model.connected && !model.notices.isEmpty {
-                NotificationFeed(notices: model.notices, commands: model.commands, maximumHeight: feedMaximumHeight)
+                NotificationFeed(notices: model.notices, commands: model.commands, maximumHeight: feedMaximumHeight,
+                                 search: $presentation.query, showsSearch: false)
                     .padding(.bottom, 10)
             } else {
                 VStack(spacing: 10) {

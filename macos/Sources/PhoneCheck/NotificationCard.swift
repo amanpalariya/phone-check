@@ -25,11 +25,7 @@ struct NotificationCard: ViewModifier {
         content
             .background {
                 if surface {
-                    if #available(macOS 26.0, *) {
-                        Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    } else {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial)
-                    }
+                    NotificationSurface()
                 }
             }
             .padding(6)
@@ -141,6 +137,18 @@ private struct TrackpadDismissal: NSViewRepresentable {
                 changed(max(-120, min(120, distance)))
             }
             return consumed ? nil : event
+        }
+    }
+}
+
+
+/// Shared surface for notification cards and the compact pane controls.
+struct NotificationSurface: View {
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        } else {
+            RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial)
         }
     }
 }

@@ -106,7 +106,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
                               contentHeightChanged: { [weak self] height in
                                   (self?.panel?.contentView as? NotificationPaneSurface)?.setContentHeight(height)
                               })
-            .padding(.top, 32)
+            .padding(.top, NotificationPaneLayout.contentTopInset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
     }
 
@@ -164,6 +164,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 
 /// Screen coordinates include negative origins on secondary displays.
 enum NotificationPaneLayout {
+    static let contentTopInset: CGFloat = 6
     static func frame(in visibleFrame: NSRect, anchor: NSRect?) -> NSRect {
         // Before AppKit lays out the status item, its window can still be at (0, 0).
         // Ignore that provisional rectangle rather than creating a zero-height panel.
@@ -173,7 +174,7 @@ enum NotificationPaneLayout {
             return rect
         }
         let width = min(444, visibleFrame.width)
-        let top = min(visibleFrame.maxY, anchor.map { $0.minY - 6 } ?? visibleFrame.maxY)
+        let top = min(visibleFrame.maxY, anchor.map { $0.minY - 2 } ?? visibleFrame.maxY)
         let height = min(680, max(0, top - visibleFrame.minY))
         let center = anchor?.midX ?? visibleFrame.midX
         let x = min(max(visibleFrame.minX, center - width / 2), visibleFrame.maxX - width)
@@ -200,6 +201,7 @@ final class NotificationPanel: NSPanel {
 final class NotificationPaneSurface: NSView {
     let host: NSHostingView<AnyView>
     let backdrop = NSVisualEffectView()
+    let compositor = CompositorBackdrop(frame: .zero)
     private let dimming = NSImageView()
     private var contentHeight: CGFloat = 240
     private var appearanceSubscription: AnyCancellable?
@@ -213,6 +215,7 @@ final class NotificationPaneSurface: NSView {
         backdrop.blendingMode = .behindWindow
         backdrop.state = .active
         addSubview(backdrop)
+        addSubview(compositor)
         dimming.imageScaling = .scaleAxesIndependently
         dimming.setAccessibilityElement(false)
         addSubview(dimming)
@@ -221,15 +224,17 @@ final class NotificationPaneSurface: NSView {
         host.autoresizingMask = [.width, .height]
         addSubview(host)
         appearanceSubscription = NotificationAppearance.shared.$transparency
-            .combineLatest(NotificationAppearance.shared.$usesSystemBackdrop)
+            .combineLatest(NotificationAppearance.shared.$usesSystemBackdrop, NotificationAppearance.shared.$blurAmount)
             .receive(on: RunLoop.main)
-            .sink { [weak self] transparency, system in
+            .sink { [weak self] transparency, system, blur in
+                self?.compositor.radius = blur
                 self?.updateStrength(transparency: transparency, system: system)
             }
         accessibilitySubscription = NSWorkspace.shared.notificationCenter
             .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
             .sink { [weak self] _ in self?.refreshAppearance() }
         layoutBackdrop()
+        compositor.radius = NotificationAppearance.shared.blurAmount
         refreshAppearance()
     }
 
@@ -258,26 +263,35 @@ final class NotificationPaneSurface: NSView {
     }
 
     private func updateStrength(transparency: Double, system: Bool) {
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        let native = compositor.isAvailable && !reduced
+        backdrop.isHidden = native
+        compositor.isHidden = !native
+        if reduced {
             backdrop.alphaValue = 1
             dimming.alphaValue = 0
             return
         }
         let strength = system ? 1 : 1 - transparency
+        // Keep the blur and dimming independent. Fading a tinted material alone
+        // leaves mostly sharp background and reads as a colored overlay.
+        compositor.alphaValue = strength
         backdrop.alphaValue = 0.32 * strength
         dimming.alphaValue = 0.22 * strength
     }
 
     private func layoutBackdrop() {
-        // Leave 32 points above the content and 64 below for the soft falloff.
-        let height = min(bounds.height, contentHeight + 96)
+        // Follow the controls/list, leaving only the soft falloff below them.
+        let height = min(bounds.height, contentHeight + NotificationPaneLayout.contentTopInset + 64)
         let rect = NSRect(x: 0, y: bounds.maxY - height, width: bounds.width, height: height)
         guard rect.width > 0, rect.height > 0 else { return }
         guard backdrop.frame != rect || backdrop.maskImage == nil else { return }
         backdrop.frame = rect
         dimming.frame = rect
+        compositor.frame = rect
         let mask = Self.featheredMask(size: rect.size)
         backdrop.maskImage = mask
+        compositor.maskImage = mask
         dimming.image = NSImage(size: rect.size, flipped: false) { bounds in
             NSColor.black.setFill()
             bounds.fill()

@@ -30,17 +30,20 @@ struct NotificationFeed: View {
     let notices: [Notice]
     @ObservedObject var commands: NotificationCommandController
     var maximumHeight: CGFloat = 480
+    var search: Binding<String>? = nil
+    var showsSearch = true
     @StateObject private var presentation = FeedPresentation()
+    private var query: Binding<String> { search ?? $presentation.query }
     private var filtered: [Notice] {
-        guard !presentation.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return notices }
+        guard !query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return notices }
         return notices.filter {
-            [$0.app, $0.title, $0.alertText].contains { $0.localizedCaseInsensitiveContains(presentation.query.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            [$0.app, $0.title, $0.alertText].contains { $0.localizedCaseInsensitiveContains(query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)) }
         }
     }
     var body: some View {
         VStack(spacing: 6) {
-            if !notices.isEmpty || !presentation.query.isEmpty {
-                NotificationSearchField(text: $presentation.query)
+            if showsSearch && (!notices.isEmpty || !query.wrappedValue.isEmpty) {
+                NotificationSearchField(text: query)
                     .padding(.horizontal, 10)
             }
             NotificationScroll(contentHeight: presentation.contentHeight) {
