@@ -102,8 +102,11 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 
     private func root(height: CGFloat) -> AnyView {
         AnyView(CompanionView(model: model, testbed: testbed, showTestbed: { [weak self] in self?.showTestbed() },
-                              feedMaximumHeight: max(60, height - 190))
-            .padding(.top, 12)
+                              feedMaximumHeight: max(60, height - 220),
+                              contentHeightChanged: { [weak self] height in
+                                  (self?.panel?.contentView as? NotificationPaneSurface)?.setContentHeight(height)
+                              })
+            .padding(.top, 32)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
     }
 
@@ -169,7 +172,7 @@ enum NotificationPaneLayout {
                   abs(rect.minY - visibleFrame.maxY) <= 40 else { return nil }
             return rect
         }
-        let width = min(388, visibleFrame.width)
+        let width = min(444, visibleFrame.width)
         let top = min(visibleFrame.maxY, anchor.map { $0.minY - 6 } ?? visibleFrame.maxY)
         let height = min(680, max(0, top - visibleFrame.minY))
         let center = anchor?.midX ?? visibleFrame.midX
@@ -192,37 +195,27 @@ final class NotificationPanel: NSPanel {
     }
 }
 
-/// A native behind-window blur with softly feathered edges. No enclosing card,
-/// border, title bar or window shadow. Each notification supplies its own surface.
+/// Localized backdrop, independent of the cards: native blur plus a soft dimming wash.
+/// Its extent follows the visible content rather than filling the entire panel.
 final class NotificationPaneSurface: NSView {
     let host: NSHostingView<AnyView>
     let backdrop = NSVisualEffectView()
+    private let dimming = NSImageView()
+    private var contentHeight: CGFloat = 240
     private var appearanceSubscription: AnyCancellable?
     private var accessibilitySubscription: AnyCancellable?
     override var acceptsFirstResponder: Bool { true }
 
     init(frame: NSRect, root: AnyView) {
         host = NSHostingView(rootView: root)
+        super.init(frame: frame)
         backdrop.material = .underWindowBackground
         backdrop.blendingMode = .behindWindow
         backdrop.state = .active
-        super.init(frame: frame)
-        backdrop.autoresizingMask = [.width, .height]
-        backdrop.frame = bounds
-        // Mask the native material itself, rather than overlaying a gradient fill.
-        let mask = NSImage(size: NSSize(width: 128, height: 128), flipped: false) { rect in
-            NSGradient(colorsAndLocations: (NSColor.clear, 0), (NSColor.black, 0.08),
-                       (NSColor.black, 0.92), (NSColor.clear, 1))!.draw(in: rect, angle: 0)
-            let vertical = NSImage(size: rect.size, flipped: false) { bounds in
-                NSGradient(colorsAndLocations: (NSColor.clear, 0), (NSColor.black, 0.04),
-                           (NSColor.black, 0.96), (NSColor.clear, 1))!.draw(in: bounds, angle: 90)
-                return true
-            }
-            vertical.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
-            return true
-        }
-        backdrop.maskImage = mask
         addSubview(backdrop)
+        dimming.imageScaling = .scaleAxesIndependently
+        dimming.setAccessibilityElement(false)
+        addSubview(dimming)
         host.sizingOptions = []
         host.frame = bounds
         host.autoresizingMask = [.width, .height]
@@ -231,34 +224,88 @@ final class NotificationPaneSurface: NSView {
             .combineLatest(NotificationAppearance.shared.$usesSystemBackdrop)
             .receive(on: RunLoop.main)
             .sink { [weak self] transparency, system in
-                self?.updateBackdropAppearance(system: system)
-                self?.updateTransparency(transparency, system: system)
+                self?.updateStrength(transparency: transparency, system: system)
             }
         accessibilitySubscription = NSWorkspace.shared.notificationCenter
             .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
-            .sink { [weak self] _ in self?.updateTransparency(NotificationAppearance.shared.transparency) }
-        updateTransparency(NotificationAppearance.shared.transparency)
-        updateBackdropAppearance()
+            .sink { [weak self] _ in self?.refreshAppearance() }
+        layoutBackdrop()
+        refreshAppearance()
+    }
+
+    func setContentHeight(_ height: CGFloat) {
+        guard height.isFinite, height > 0, abs(contentHeight - height) > 1 else { return }
+        contentHeight = height
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        layoutBackdrop()
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        updateBackdropAppearance()
+        refreshAppearance()
     }
 
-    private func updateBackdropAppearance(system: Bool = NotificationAppearance.shared.usesSystemBackdrop) {
-        if system {
-            // Let AppKit adapt the material to the actual background and appearance.
-            backdrop.appearance = nil
+    private func refreshAppearance() {
+        // Notification Center's surrounding wash stays dark in both appearances.
+        // Only the backdrop is overridden; notification cards retain the system style.
+        backdrop.appearance = NSAppearance(named: .darkAqua)
+        updateStrength(transparency: NotificationAppearance.shared.transparency,
+                       system: NotificationAppearance.shared.usesSystemBackdrop)
+    }
+
+    private func updateStrength(transparency: Double, system: Bool) {
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+            backdrop.alphaValue = 1
+            dimming.alphaValue = 0
             return
         }
-        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        // Invert only the backdrop. Cards and controls retain the system appearance.
-        backdrop.appearance = NSAppearance(named: dark ? .aqua : .darkAqua)
+        let strength = system ? 1 : 1 - transparency
+        backdrop.alphaValue = 0.32 * strength
+        dimming.alphaValue = 0.22 * strength
     }
 
-    private func updateTransparency(_ value: Double, system: Bool = NotificationAppearance.shared.usesSystemBackdrop) {
-        backdrop.alphaValue = system || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 1 - value
+    private func layoutBackdrop() {
+        // Leave 32 points above the content and 64 below for the soft falloff.
+        let height = min(bounds.height, contentHeight + 96)
+        let rect = NSRect(x: 0, y: bounds.maxY - height, width: bounds.width, height: height)
+        guard rect.width > 0, rect.height > 0 else { return }
+        guard backdrop.frame != rect || backdrop.maskImage == nil else { return }
+        backdrop.frame = rect
+        dimming.frame = rect
+        let mask = Self.featheredMask(size: rect.size)
+        backdrop.maskImage = mask
+        dimming.image = NSImage(size: rect.size, flipped: false) { bounds in
+            NSColor.black.setFill()
+            bounds.fill()
+            mask.draw(in: bounds, from: .zero, operation: .destinationIn, fraction: 1)
+            return true
+        }
+    }
+
+    private static func featheredMask(size: NSSize) -> NSImage {
+        // Keep the fade in points, so short lists don't acquire sharp edges and
+        // long lists don't get a larger blur field merely because they're taller.
+        let x = min(72 / size.width, 0.48)
+        let y = min(64 / size.height, 0.48)
+        return NSImage(size: size, flipped: false) { rect in
+            func gradient(_ edge: CGFloat) -> NSGradient {
+                NSGradient(colorsAndLocations: (.clear, 0), (.black.withAlphaComponent(0.25), edge * 0.35),
+                           (.black.withAlphaComponent(0.75), edge * 0.7), (.black, edge),
+                           (.black, 1 - edge), (.black.withAlphaComponent(0.75), 1 - edge * 0.7),
+                           (.black.withAlphaComponent(0.25), 1 - edge * 0.35), (.clear, 1))!
+            }
+            gradient(x).draw(in: rect, angle: 0)
+            let vertical = NSImage(size: size, flipped: false) { bounds in
+                gradient(y).draw(in: bounds, angle: 90)
+                return true
+            }
+            vertical.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
+            return true
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

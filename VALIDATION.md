@@ -238,3 +238,30 @@ Additional device checks:
   tool's window screenshot did not include the separate patterned background and showed
   a uniform material, so it did not establish live desktop blur quality. This is an API-role
   correction, not a verified match to Notification Center's compositor effect.
+
+## Localized Notification Center-style wash and overflow cue — October 28, 2026
+
+- The user opened the real Notification Center for direct inspection. Observed its soft,
+  localized dark wash and broad fade around the visible notification content, rather than
+  a tall material rectangle below a short list. This informed the geometry and dimming;
+  it does not establish Apple's private compositor implementation or exact blur parameters.
+- Reworked the backdrop into the existing behind-window material plus a feathered black
+  wash. It remains dark in both light and dark appearance, per the user's correction;
+  cards retain their system appearance. Automatic uses the default strength; Custom keeps
+  the saved strength slider. Reduce Transparency continues to take priority. No private API,
+  screen capture pipeline, background-glass sheet, or new dependency was introduced.
+- Measured the visible companion content, including the bounded feed viewport, and sized the
+  backdrop to that content with a fixed soft falloff. Search, updates, expansion and empty
+  states update its extent. Removed the blank panel-height tail for short/filtered lists.
+- Added a 32-point bottom fade to the scroll viewport only while notifications remain below.
+  It updates during native scrolling and layout, and disappears at the end so the final
+  notification is fully visible. Kept overlay scrollers, viewport anchoring and keyboard/
+  accessibility access to the native list. The clip layer also clips overflowing card content.
+- Debug/review/release builds and native pane checks passed. Checks cover localized backdrop
+  growth/shrinkage, dark backdrop in both appearances, system-style notification content,
+  overflow cue presence and removal at the end, and existing window interactions. Expanded
+  long-text/bottom fixture rendering passed scrolling/horizontal-overflow checks.
+- Live UI checks passed for dark-mode overflow fading, scrolling to the final unfaded item,
+  filtering down to one notification and shrinking the wash, and the dark backdrop with
+  light-mode cards. Updated and signature-verified the installed app. Phone-side commands
+  were not exercised for this presentation change.

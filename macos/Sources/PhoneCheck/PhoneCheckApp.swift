@@ -36,6 +36,7 @@ struct CompanionView: View {
     @ObservedObject var testbed = NotificationTestbed()
     var showTestbed: () -> Void = {}
     var feedMaximumHeight: CGFloat = 480
+    var contentHeightChanged: (CGFloat) -> Void = { _ in }
     @StateObject private var presentation = CompanionPresentation()
     var body: some View {
         VStack(spacing: 0) {
@@ -56,6 +57,12 @@ struct CompanionView: View {
             }
         }
         .frame(width: 340)
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(key: CompanionHeight.self, value: proxy.size.height)
+            }
+        }
+        .onPreferenceChange(CompanionHeight.self, perform: contentHeightChanged)
         .tint(.accentColor)
         .onAppear { model.refreshAuthorization() }
         .sheet(isPresented: $presentation.showsAppearance) { NotificationAppearanceSettings() }
@@ -225,4 +232,10 @@ private struct NativePrimaryAction: ViewModifier {
             content.buttonStyle(.borderedProminent).controlSize(.large)
         }
     }
+}
+
+
+private struct CompanionHeight: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }

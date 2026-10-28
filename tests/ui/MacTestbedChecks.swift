@@ -95,20 +95,22 @@ func runPaneChecks() {
     for system in [NSAppearance.Name.aqua, .darkAqua] {
         surface.appearance = NSAppearance(named: system)
         settle()
-        precondition(surface.backdrop.appearance == nil && surface.backdrop.alphaValue == 1,
-                     "System backdrop must inherit its appearance and preserve native opacity")
+        precondition(surface.backdrop.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,
+                     "Backdrop must remain dark in both system appearances")
+        let expected: CGFloat = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 0.32
+        precondition(abs(surface.backdrop.alphaValue - expected) < 0.001)
+        precondition(surface.host.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == system)
     }
+    surface.setContentHeight(120)
+    surface.layoutSubtreeIfNeeded()
+    precondition(surface.backdrop.frame.height == 216, "A short list must not leave a panel-sized backdrop")
+    surface.setContentHeight(300)
+    surface.layoutSubtreeIfNeeded()
+    precondition(surface.backdrop.frame.height == 396, "Backdrop must follow visible content height")
     NotificationAppearance.shared.usesSystemBackdrop = false
     settle()
-
-    for (system, backdrop) in [(NSAppearance.Name.aqua, NSAppearance.Name.darkAqua), (.darkAqua, .aqua)] {
-        surface.appearance = NSAppearance(named: system)
-        settle()
-        precondition(surface.backdrop.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == backdrop,
-                     "Backdrop must use the opposite appearance")
-        precondition(surface.host.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == system,
-                     "Notification content must keep the system appearance")
-    }
+    precondition(surface.backdrop.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,
+                 "Custom strength must keep the backdrop dark")
     surface.appearance = originalAppearance
     NotificationAppearance.shared.usesSystemBackdrop = originalSystem
     settle()
@@ -118,6 +120,23 @@ func runPaneChecks() {
             precondition(scroll.scrollerStyle == .overlay)
             precondition(scroll.frame.height < panel.frame.height, "Feed must leave room for pane controls")
             precondition((scroll.documentView?.frame.width ?? 0) <= scroll.contentView.bounds.width + 1)
+            if let document = scroll.documentView {
+                let origin = scroll.contentView.bounds.origin
+                let bottom = document.isFlipped ? max(document.bounds.minY, document.bounds.maxY - scroll.contentView.bounds.height) : document.bounds.minY
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: bottom))
+                scroll.reflectScrolledClipView(scroll.contentView)
+                precondition(!scroll.hasMoreBelow && scroll.contentView.layer?.mask == nil,
+                             "The final notification must not remain faded at the end")
+                if document.frame.height > scroll.contentView.bounds.height + 1 {
+                    let top = document.isFlipped ? document.bounds.minY : document.bounds.maxY - scroll.contentView.bounds.height
+                    scroll.contentView.scroll(to: NSPoint(x: 0, y: top))
+                    scroll.reflectScrolledClipView(scroll.contentView)
+                    precondition(scroll.hasMoreBelow && scroll.contentView.layer?.mask != nil,
+                                 "Overflowing notifications need a bottom fade cue")
+                }
+                scroll.contentView.scroll(to: origin)
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
         }
         view.subviews.forEach(checkScroll)
     }

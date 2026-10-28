@@ -241,11 +241,14 @@ private func runBlurReview() {
         testbed.show(.text)
         testbed.show(.messaging)
         testbed.show(.group)
+        if CommandLine.arguments.contains("--more") { testbed.showAll() }
         testbed.showsInPane = true
-        let surface = NotificationPaneSurface(frame: NSRect(x: 266, y: 10, width: 388, height: 580),
+        let surface = NotificationPaneSurface(frame: NSRect(x: 238, y: 10, width: 444, height: 580),
             root: AnyView(CompanionView(model: Companion(startServices: false), testbed: testbed,
-                                       feedMaximumHeight: 390)
-                .padding(.top, 12).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)))
+                                       feedMaximumHeight: 360, contentHeightChanged: { [weak content] height in
+                                           content?.subviews.compactMap { $0 as? NotificationPaneSurface }.first?.setContentHeight(height)
+                                       })
+                .padding(.top, 32).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)))
         content.addSubview(surface)
     } else {
         for (index, sample) in materials.enumerated() {

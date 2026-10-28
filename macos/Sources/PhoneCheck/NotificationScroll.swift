@@ -57,6 +57,43 @@ struct NotificationScroll<Content: View>: NSViewRepresentable {
 }
 
 final class NotificationOverlayScrollView: NSScrollView {
+    private let bottomFade = CAGradientLayer()
+    private(set) var hasMoreBelow = false
+
+    override func layout() {
+        super.layout()
+        updateBottomFade()
+    }
+
+    override func reflectScrolledClipView(_ clipView: NSClipView) {
+        super.reflectScrolledClipView(clipView)
+        updateBottomFade()
+    }
+
+    private func updateBottomFade() {
+        guard let documentView else { return }
+        let visible = documentVisibleRect
+        hasMoreBelow = documentView.isFlipped
+            ? visible.maxY < documentView.bounds.maxY - 1
+            : visible.minY > documentView.bounds.minY + 1
+        contentView.wantsLayer = true
+        contentView.layer?.masksToBounds = true
+        guard hasMoreBelow, contentView.bounds.height > 0 else {
+            contentView.layer?.mask = nil
+            return
+        }
+        guard let layer = contentView.layer else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bottomFade.frame = layer.bounds
+        bottomFade.startPoint = CGPoint(x: 0.5, y: 0)
+        bottomFade.endPoint = CGPoint(x: 0.5, y: 1)
+        bottomFade.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+        bottomFade.locations = [0, NSNumber(value: max(0, 1 - 32 / layer.bounds.height)), 1]
+        layer.mask = bottomFade
+        CATransaction.commit()
+    }
+
     // AppKit can reapply the system preference after attaching to a window.
     override var scrollerStyle: NSScroller.Style {
         get { super.scrollerStyle }

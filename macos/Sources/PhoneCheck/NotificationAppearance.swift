@@ -36,7 +36,7 @@ struct NotificationAppearanceSettings: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Appearance").font(.headline)
             Picker("Backdrop", selection: $appearance.usesSystemBackdrop) {
-                Text("System").tag(true)
+                Text("Automatic").tag(true)
                 Text("Custom").tag(false)
             }.pickerStyle(.segmented)
             if !appearance.usesSystemBackdrop {
