@@ -29,8 +29,11 @@ private struct CompanionMenuLabel: View {
     @ObservedObject var model: Companion
     @Environment(\.openWindow) private var openWindow
     var body: some View {
-        Image(systemName: "iphone")
-            .accessibilityLabel("Phone Check")
+        HStack(spacing: 4) {
+            Image(systemName: "iphone")
+            if model.connected { Text("\(model.notificationCount)").monospacedDigit() }
+        }
+            .accessibilityLabel("Phone Check, \(model.status), \(model.notificationCount) notifications")
             .onReceive(NotificationCenter.default.publisher(for: .init("PhoneCheckShow"))) { _ in
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "phone-check")
@@ -49,15 +52,6 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-enum Palette {
-    static let controlAccent = Color(red: 0.45, green: 0.28, blue: 0.79)
-    static let purple = Color(nsColor: NSColor(name: nil) { appearance in
-        if appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
-            return NSColor(srgbRed: 0.78, green: 0.68, blue: 1, alpha: 1)
-        }
-        return NSColor(srgbRed: 0.45, green: 0.28, blue: 0.79, alpha: 1)
-    })
-}
 
 struct CompanionView: View {
     @ObservedObject var model: Companion
@@ -78,7 +72,7 @@ struct CompanionView: View {
             }
         }
         .frame(width: 380)
-        .tint(Palette.controlAccent)
+        .tint(.accentColor)
         .onAppear { model.refreshAuthorization() }
         .confirmationDialog("Unpair phone?", isPresented: $model.confirmUnpair) {
             Button("Unpair", role: .destructive, action: model.unpair)
@@ -106,9 +100,15 @@ struct CompanionView: View {
             Spacer(minLength: 0)
             Text("Phone Check").font(.headline)
             Spacer(minLength: 0)
-            Circle().fill(model.connected ? Color.green : Color.secondary.opacity(0.35))
-                .frame(width: 6, height: 6).frame(width: 28, height: 28)
-                .help(model.status).accessibilityLabel(model.status)
+            HStack(spacing: 6) {
+                if model.connected {
+                    Text("\(model.notificationCount)").font(.caption).monospacedDigit()
+                        .accessibilityLabel("\(model.notificationCount) notifications")
+                }
+                Circle().fill(model.connected ? Color.green : Color.secondary)
+                    .frame(width: 6, height: 6)
+                    .help(model.status).accessibilityLabel(model.status)
+            }.frame(minWidth: 28, minHeight: 28)
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
     }
@@ -158,30 +158,20 @@ struct CompanionView: View {
             HStack {
                 Label("5-minute code", systemImage: "clock").foregroundStyle(.secondary)
                 Spacer()
-                Button("Cancel", action: model.cancelPairing).buttonStyle(.plain)
+                Button("Cancel", action: model.cancelPairing).buttonStyle(.borderless)
             }.font(.caption)
         }.padding(.horizontal, 20).padding(.bottom, 22)
     }
 
     private var pairedContent: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Image(systemName: "iphone").foregroundStyle(Palette.purple)
-                Text(model.status).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
-                Spacer()
-                if model.connected && !model.notices.isEmpty {
-                    Text("\(model.notices.count)").font(.system(.caption2, design: .rounded).weight(.medium))
-                        .foregroundStyle(.secondary)
-                }
-            }.padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 12)
-
             if !model.listening {
                 Button("Retry connection", action: model.startListening)
                     .modifier(NativePrimaryAction()).padding(.horizontal, 20).padding(.bottom, 12)
             }
             if !model.alertsAllowed {
                 HStack(spacing: 10) {
-                    Image(systemName: "bell.badge").foregroundStyle(Palette.purple)
+                    Image(systemName: "bell.badge").foregroundStyle(.primary)
                     Text("Mac alerts off").font(.subheadline)
                     Spacer()
                     Button("Enable", action: model.allowAlerts).buttonStyle(.bordered).controlSize(.small)
@@ -211,8 +201,8 @@ struct CompanionView: View {
         Image(systemName: symbol)
             .font(.system(size: size * 0.43, weight: .medium))
             .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(Palette.purple).frame(width: size, height: size)
-            .background(Palette.purple.opacity(0.12), in: Circle())
+            .foregroundStyle(.primary).frame(width: size, height: size)
+            .background(Color.secondary.opacity(0.12), in: Circle())
             .accessibilityHidden(true)
     }
 }

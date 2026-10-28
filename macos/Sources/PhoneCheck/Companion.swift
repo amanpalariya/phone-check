@@ -7,6 +7,7 @@ import PhoneCheckCore
 final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     @Published private(set) var status = "Not paired"
     @Published private(set) var notices: [Notice] = []
+    var notificationCount: Int { NotificationSection.count(notices) }
     @Published private(set) var paired = false
     @Published private(set) var connected = false
     @Published private(set) var listening = false
@@ -57,6 +58,12 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
     }
+    #if PHONECHECK_VISUAL_TEST
+    func showPreview(_ items: [Notice]) {
+        notices = items; paired = true; connected = true; listening = true
+        alertsAllowed = true; status = "Connected"
+    }
+    #endif
     var code: String {
         guard pairing, let credentials, !host.isEmpty else { return "" }
         let secret = credentials.secret.base64EncodedString().replacingOccurrences(of: "+", with: "-")
@@ -210,7 +217,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
                 let contentChanged = previous?.revision != item.revision
                 if contentChanged { commands.notificationChanged(item) }
                 publish()
-                if alertsAllowed && contentChanged && AlertPolicy.shouldAlert(
+                if alertsAllowed && contentChanged && item.groupSummary != true && AlertPolicy.shouldAlert(
                     phoneInUse: phoneAttention.inUse ?? message.phoneInUse, sentAt: message.sentAt,
                     now: Int64(Date().timeIntervalSince1970 * 1000)) {
                     alerts.deliver(item, isNew: previous == nil) { [weak self] in self?.error = "Mac notification unavailable" }
@@ -256,7 +263,12 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         return true
     }
     private func publish() {
-        notices = state.items.values.sorted { $0.postedAt > $1.postedAt }
+        notices = state.items.values.sorted {
+            $0.postedAt == $1.postedAt ? $0.key < $1.key : $0.postedAt > $1.postedAt
+        }
+        // Android summaries repeat their children's content. They remain active
+        // for group capabilities, but must not leave a second native Mac alert.
+        for notice in notices where notice.groupSummary == true { removeAlert(notice.key) }
         alerts.register(notices)
     }
     private func clearActive() {

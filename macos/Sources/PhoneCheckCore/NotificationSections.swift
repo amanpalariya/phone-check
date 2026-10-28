@@ -14,7 +14,15 @@ public struct NotificationSection: Identifiable {
         var stableID: String { "group:\(app.utf8.count):\(app)\(key)" }
     }
 
+    public static func count(_ notices: [Notice]) -> Int {
+        sections(notices).reduce(0) { $0 + ($1.children.isEmpty ? 1 : $1.children.count) }
+    }
+
     public static func sections(_ notices: [Notice]) -> [NotificationSection] {
+        // Repeated transport updates share a stable Android key. Do not merge
+        // distinct notifications merely because their text happens to match.
+        var seenKeys: Set<String> = []
+        let notices = notices.filter { seenKeys.insert($0.key).inserted }
         func group(_ notice: Notice) -> GroupID? {
             guard let key = notice.groupKey else { return nil }
             return GroupID(app: notice.packageName ?? notice.app, key: key)

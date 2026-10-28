@@ -2,36 +2,48 @@ import AppKit
 import SwiftUI
 
 private final class CardPresentation: ObservableObject {
-    @Published var hovering = false
     @Published var translation: CGFloat = 0
+    #if PHONECHECK_VISUAL_TEST
+    @Published var hovering = CommandLine.arguments.contains("--hover")
+    #else
+    @Published var hovering = false
+    #endif
 }
 
 /// Presentation only: the row remains visible until Android confirms removal.
 struct NotificationCard: ViewModifier {
     let canDismiss: Bool
     let dismiss: () -> Void
+    var surface = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var presentation = CardPresentation()
     @FocusState private var closeFocused: Bool
+    private var showClose: Bool { presentation.hovering || closeFocused }
     private let threshold: CGFloat = 80
 
     func body(content: Content) -> some View {
         content
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background {
+                if surface {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial)
+                }
+            }
+            .padding(6)
             .overlay(alignment: .topTrailing) {
                 if canDismiss {
                     Button(action: dismiss) {
                         Image(systemName: "xmark").font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.primary)
                             .frame(width: 24, height: 24)
-                            .background(.background.opacity(0.8), in: Circle())
+                            .background(Color(nsColor: .controlBackgroundColor), in: Circle())
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .focused($closeFocused)
                     .accessibilityLabel("Dismiss on phone")
                     .help("Dismiss on phone")
-                    .opacity(presentation.hovering || closeFocused ? 1 : 0.65)
-                    .padding(8)
+                    .focused($closeFocused)
+                    .opacity(showClose ? 1 : 0)
+                    .allowsHitTesting(showClose)
                 }
             }
             .offset(x: reduceMotion ? 0 : presentation.translation)
@@ -46,7 +58,7 @@ struct NotificationCard: ViewModifier {
             .background {
                 TrackpadDismissal(enabled: canDismiss, changed: { presentation.translation = $0 }, ended: finishSwipe)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(Rectangle())
             .onHover { presentation.hovering = $0 }
             .onChange(of: canDismiss) { _, _ in presentation.translation = 0 }
             .accessibilityActions {

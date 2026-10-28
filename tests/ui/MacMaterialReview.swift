@@ -22,20 +22,28 @@ struct MaterialReview {
             func verifyScrollLayout(_ view: NSView) {
                 if let scroll = view as? NSScrollView {
                     let width = scroll.contentView.bounds.width
-                    scroll.scrollerStyle = .legacy
-                    scroll.layoutSubtreeIfNeeded()
-                    precondition(scroll.scrollerStyle == .overlay, "Preference changes must preserve overlay scrolling")
-                    precondition(abs(scroll.contentView.bounds.width - width) < 1, "Scrollbar must not reflow content")
-                    precondition(abs(width - scroll.bounds.width) < 1, "Scrollbar must not consume a column")
-                    precondition(abs((scroll.documentView?.frame.width ?? 0) - width) < 1, "No horizontal overflow")
+                    if scroll is NotificationOverlayScrollView {
+                        scroll.scrollerStyle = .legacy
+                        scroll.layoutSubtreeIfNeeded()
+                        precondition(scroll.scrollerStyle == .overlay, "Feed must preserve overlay scrolling")
+                        precondition(abs(scroll.contentView.bounds.width - scroll.bounds.width) < 1, "No trailing scrollbar gutter")
+                        precondition(abs(scroll.contentView.bounds.width - width) < 1, "Scrollbar must not resize rows")
+                        if CommandLine.arguments.contains("--long-reply") {
+                            precondition((scroll.documentView?.frame.height ?? 0) > 1000, "Expanded long text must contribute its full scroll height")
+                        }
+                    }
+                    precondition((scroll.documentView?.frame.width ?? 0) <= width + 1, "No horizontal overflow")
                     if CommandLine.arguments.contains("--bottom"), let document = scroll.documentView {
-                        document.scroll(NSPoint(x: 0, y: max(0, document.frame.height - scroll.contentView.bounds.height)))
+                        let bottom = max(0, document.frame.height - scroll.contentView.bounds.height)
+                        document.scroll(NSPoint(x: 0, y: bottom))
+                        precondition(abs(scroll.contentView.bounds.maxY - document.frame.height) < 1 || bottom == 0,
+                                     "The end of expanded content must be reachable")
                     }
                 }
                 for child in view.subviews { verifyScrollLayout(child) }
             }
             if let view = window.contentView { verifyScrollLayout(view) }
-            print("Overlay, stable-width and horizontal-overflow layout checks passed")
+            print("Native scrolling and horizontal-overflow layout checks passed")
             window.contentView?.layoutSubtreeIfNeeded()
             if let view = window.contentView,
                let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
@@ -75,10 +83,13 @@ private struct Review: View {
 }
 
 private struct RichReview: View {
+    @StateObject private var companion = Companion(startServices: false)
     @StateObject private var commands = NotificationCommandController(current: { _ in nil }, connected: { false }, send: { _ in })
     private let notices: [Notice] = {
         let json = #"[{"key":"chat","app":"Messages","title":"Weekend plans","body":"","revision":"1","dismissible":true,"postedAt":1,"kind":"messaging","messages":[{"sender":"Alex","text":"Coffee at 10?","time":1793075400000,"attachment":false},{"sender":"Sam","text":"See you there.","time":1793075460000,"attachment":false}],"actions":[{"id":"reply","title":"Reply","input":true,"freeform":true,"choices":["Yes","Later"],"enabled":true,"requiresUnlock":false,"destructive":false}],"openable":true},{"key":"progress","app":"Downloads","title":"Downloading update","body":"System update","revision":"2","dismissible":false,"postedAt":2,"kind":"progress","ongoing":true,"progress":{"value":75,"max":100,"indeterminate":false}},{"key":"media","app":"Music","title":"Morning playlist","body":"Sample artist","revision":"3","dismissible":true,"postedAt":3,"kind":"media","actions":[{"id":"pause","title":"Pause","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false},{"id":"next","title":"Next","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}]}]"#
         var result = try! JSONDecoder().decode([Notice].self, from: Data(json.utf8))
+        let read = #"{"id":"read","title":"Mark as read","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}"#
+        result[0].actions?.append(try! JSONDecoder().decode(NoticeAction.self, from: Data(read.utf8)))
         let call = #"{"key":"call","app":"Phone","title":"Alex Morgan","body":"Incoming call","revision":"1","dismissible":false,"postedAt":4,"kind":"call","actions":[{"id":"decline","title":"Decline","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":true},{"id":"answer","title":"Answer","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}]}"#
         result.insert(try! JSONDecoder().decode(Notice.self, from: Data(call.utf8)), at: 0)
         // Deterministic artwork exercises the same bounded JPEG decoder as the phone.
@@ -93,7 +104,7 @@ private struct RichReview: View {
         var groupSummary = result[1]
         groupSummary.key = "inbox-summary"; groupSummary.app = "Mail"; groupSummary.title = "2 new messages"
         groupSummary.groupKey = "inbox"; groupSummary.groupSummary = true
-        groupSummary.actions = []; groupSummary.messages = nil; groupSummary.openable = false
+        groupSummary.actions = result[1].actions; groupSummary.messages = nil; groupSummary.openable = true
         result.append(groupSummary)
         for (index, sender) in ["Jordan Lee", "Design team"].enumerated() {
             var child = groupSummary
@@ -106,7 +117,7 @@ private struct RichReview: View {
             var long = result[1]
             long.key = "long"; long.app = "A very long application name"; long.title = "A long notification title that needs room to wrap without pushing its controls out of reach"
             long.messages = nil
-            long.body = "First line\nSecond line\nThird line\nFourth line\n" + String(repeating: "Long notification content. ", count: 30)
+            long.body = "First line\nSecond line\nThird line\nFourth line\n" + String(repeating: "Long notification content. ", count: 80)
             result.insert(long, at: 0)
             var disabled = result[0]
             disabled.key = "disabled"; disabled.title = "Action available on phone"
@@ -131,17 +142,28 @@ private struct RichReview: View {
             pane.environment(\.colorScheme, .dark)
         }.padding(24).background(LinearGradient(colors: [.blue, .cyan, .orange], startPoint: .topLeading, endPoint: .bottomTrailing))
             .onAppear {
-                let key = CommandLine.arguments.contains("--group-reply") ? "inbox-0" : "chat"
-                if CommandLine.arguments.contains("--reply") || CommandLine.arguments.contains("--group-reply"),
+                if CommandLine.arguments.contains("--companion") { companion.showPreview(notices) }
+                let key = CommandLine.arguments.contains("--long-reply") ? "long" : CommandLine.arguments.contains("--summary-reply") ? "inbox-summary" : CommandLine.arguments.contains("--group-reply") ? "inbox-0" : "chat"
+                if ["--reply", "--group-reply", "--long-reply", "--summary-reply", "--details"].contains(where: CommandLine.arguments.contains),
                    let notice = notices.first(where: { $0.key == key }), let action = notice.actions?.first {
-                    commands.beginReply(notice, action: action)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        commands.beginReply(notice, action: action)
+                        if CommandLine.arguments.contains("--details") {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { commands.replyTarget = nil }
+                        }
+                    }
                 }
             }
     }
     private var pane: some View {
         Group {
-            if CommandLine.arguments.contains("--expanded") {
-                OverlayNotificationScroll {
+            if CommandLine.arguments.contains("--companion") {
+                VStack {
+                    CompanionView(model: companion)
+                    Spacer(minLength: 0)
+                }
+            } else if CommandLine.arguments.contains("--expanded") {
+                ScrollView(.vertical) {
                     VStack(spacing: 8) {
                         ForEach(notices.filter { $0.groupKey == nil }) {
                             RichNoticeRow(notice: $0, commands: commands, initiallyExpanded: true)

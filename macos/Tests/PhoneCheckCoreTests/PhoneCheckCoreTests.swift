@@ -13,11 +13,58 @@ struct PhoneCheckCoreTests {
         try tests.testFrameLimitsAndJSONRoundTrip()
         try tests.testRichAndLegacyNoticeDecoding()
         try tests.testNotificationGroupsPreserveMembersAndAppBoundaries()
-        print("8 core checks passed")
+        try tests.testRepeatedKeysAndGroupSummariesDoNotInflateCounts()
+        try tests.testSummaryFirstMessageUpdatesAcrossApps()
+        print("10 core checks passed")
         try FirebaseChecks.run()
     }
     private func notice(_ revision: String = "one", key: String = "k") -> Notice {
         Notice(key: key, app: "Mail", title: "Subject", body: "Text", revision: revision, dismissible: true, postedAt: 1)
+    }
+    func testSummaryFirstMessageUpdatesAcrossApps() throws {
+        var state = ActiveState(); state.snapshot([])
+        for (app, package) in [("Gmail", "com.google.android.gm"), ("Slack", "com.Slack")] {
+            var summary = notice(key: "\(app)-summary")
+            summary.app = app; summary.packageName = package
+            summary.groupKey = "messages"; summary.groupSummary = true; summary.openable = true
+            _ = state.upsert(summary)
+            var message = summary
+            message.key = "\(app)-message"; message.groupSummary = false
+            for revision in ["first", "second", "second"] {
+                message.revision = revision
+                _ = state.upsert(message)
+            }
+        }
+        let sections = NotificationSection.sections(Array(state.items.values))
+        try check(sections.count == 2)
+        try check(sections.allSatisfy { $0.children.count == 1 && $0.children[0].groupSummary == false })
+        try check(NotificationSection.count(Array(state.items.values)) == 2)
+        _ = state.remove("Gmail-summary")
+        try check(NotificationSection.count(Array(state.items.values)) == 2)
+    }
+    func testRepeatedKeysAndGroupSummariesDoNotInflateCounts() throws {
+        var first = notice(key: "first"); first.groupKey = "chat"
+        var second = first; second.key = "second"
+        var summary = first; summary.key = "summary"; summary.groupSummary = true; summary.openable = true
+        let notices = [first, summary, second, first]
+        let sections = NotificationSection.sections(notices)
+        try check(sections.count == 1 && sections[0].children.map(\.key) == ["first", "second"])
+        try check(NotificationSection.count(notices) == 2)
+        try check(NotificationSection.count([summary, first]) == 1)
+        try check(NotificationSection.count([summary]) == 1)
+        // Same text from two independent Android keys must remain two notices.
+        try check(NotificationSection.count([notice(key: "a"), notice(key: "b")]) == 2)
+        var state = ActiveState()
+        state.snapshot(notices)
+        try check(state.items.count == 3)
+        for index in 0..<5 {
+            first.revision = "update-\(index)"
+            try check({ state.upsert(first) }())
+            try check(NotificationSection.count(Array(state.items.values)) == 2)
+        }
+        try check(state.items["first"]?.revision == "update-4")
+        _ = state.remove("second")
+        try check(NotificationSection.count(Array(state.items.values)) == 1)
     }
     func testNotificationGroupsPreserveMembersAndAppBoundaries() throws {
         var first = notice(key: "first"); first.groupKey = "inbox"
