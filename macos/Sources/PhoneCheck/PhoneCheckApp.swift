@@ -28,7 +28,6 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
 
 
 private final class CompanionPresentation: ObservableObject {
-    @Published var showsAppearance = false
     @Published var query = ""
 }
 
@@ -36,6 +35,7 @@ struct CompanionView: View {
     @ObservedObject var model: Companion
     @ObservedObject var testbed = NotificationTestbed()
     var showTestbed: () -> Void = {}
+    var showAppearance: () -> Void = {}
     var pointerOffset: CGFloat = 0
     var feedMaximumHeight: CGFloat = 480
     var contentHeightChanged: (CGFloat) -> Void = { _ in }
@@ -61,7 +61,6 @@ struct CompanionView: View {
         .tint(.accentColor)
         .onAppear { model.refreshAuthorization() }
         .onChange(of: testbed.showsInPane) { _, _ in presentation.query = "" }
-        .sheet(isPresented: $presentation.showsAppearance) { NotificationAppearanceSettings() }
         .confirmationDialog("Unpair phone?", isPresented: $model.confirmUnpair) {
             Button("Unpair", role: .destructive, action: model.unpair)
             Button("Cancel", role: .cancel) {}
@@ -120,7 +119,7 @@ struct CompanionView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Menu {
-                Button("Appearance…") { presentation.showsAppearance = true }
+                Button("Appearance…", action: showAppearance)
                 Divider()
                 Button("Notification testbed…") {
                     NSApp.activate(ignoringOtherApps: true)

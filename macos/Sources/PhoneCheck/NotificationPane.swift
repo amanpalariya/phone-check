@@ -11,6 +11,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private let statusItem: NSStatusItem
     private var panel: NotificationPanel?
     private var testbedWindow: NSWindow?
+    private var appearanceWindow: NSWindow?
     private var subscriptions = Set<AnyCancellable>()
     private var outsideMonitor: Any?
     private var localMonitor: Any?
@@ -102,6 +103,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 
     private func root(height: CGFloat, pointerOffset: CGFloat) -> AnyView {
         AnyView(CompanionView(model: model, testbed: testbed, showTestbed: { [weak self] in self?.showTestbed() },
+                              showAppearance: { [weak self] in self?.showAppearance() },
                               pointerOffset: pointerOffset,
                               feedMaximumHeight: max(60, height - 220),
                               contentHeightChanged: { [weak self] height in
@@ -139,6 +141,23 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }
         if let localMonitor { NSEvent.removeMonitor(localMonitor) }
         outsideMonitor = nil; localMonitor = nil
+    }
+
+    private func showAppearance() {
+        hide()
+        if appearanceWindow == nil {
+            let controller = NSHostingController(rootView: NotificationAppearanceSettings { [weak self] in
+                self?.appearanceWindow?.close()
+            })
+            let window = NSWindow(contentViewController: controller)
+            window.styleMask = [.titled, .closable, .miniaturizable]
+            window.title = "Appearance"
+            window.isReleasedWhenClosed = false
+            window.center()
+            appearanceWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        appearanceWindow?.makeKeyAndOrderFront(nil)
     }
 
     private func showTestbed() {

@@ -36,7 +36,7 @@ private final class AppearanceSettingsState: ObservableObject {
 
 struct NotificationAppearanceSettings: View {
     @ObservedObject private var appearance = NotificationAppearance.shared
-    @Environment(\.dismiss) private var dismiss
+    var close: () -> Void
     @StateObject private var state = AppearanceSettingsState()
 
     var body: some View {
@@ -82,7 +82,7 @@ struct NotificationAppearanceSettings: View {
             }
             HStack {
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
+                Button("Done", action: close).keyboardShortcut(.defaultAction)
             }
         }
         .padding(20).frame(width: 320)
