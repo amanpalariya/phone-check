@@ -64,7 +64,10 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 
     func show() {
         guard let screen = statusItem.button?.window?.screen ?? NSScreen.main else { return }
-        let frame = NotificationPaneLayout.frame(in: screen.visibleFrame)
+        let anchor = statusItem.button.flatMap { button in
+            button.window?.convertToScreen(button.convert(button.bounds, to: nil))
+        }
+        let frame = NotificationPaneLayout.frame(in: screen.visibleFrame, anchor: anchor)
         let panel: NotificationPanel
         if let existing = self.panel { panel = existing }
         else {
@@ -100,8 +103,8 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private func root(height: CGFloat) -> AnyView {
         AnyView(CompanionView(model: model, testbed: testbed, showTestbed: { [weak self] in self?.showTestbed() },
                               feedMaximumHeight: max(60, height - 190))
-            .padding(.top, 12).padding(.trailing, 16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing))
+            .padding(.top, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
     }
 
     func hide() {
@@ -158,9 +161,20 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 
 /// Screen coordinates include negative origins on secondary displays.
 enum NotificationPaneLayout {
-    static func frame(in visibleFrame: NSRect) -> NSRect {
-        NSRect(x: visibleFrame.maxX - min(404, visibleFrame.width), y: visibleFrame.minY,
-               width: min(404, visibleFrame.width), height: visibleFrame.height)
+    static func frame(in visibleFrame: NSRect, anchor: NSRect?) -> NSRect {
+        // Before AppKit lays out the status item, its window can still be at (0, 0).
+        // Ignore that provisional rectangle rather than creating a zero-height panel.
+        let anchor = anchor.flatMap { rect -> NSRect? in
+            guard rect.width > 0, rect.maxX >= visibleFrame.minX, rect.minX <= visibleFrame.maxX,
+                  abs(rect.minY - visibleFrame.maxY) <= 40 else { return nil }
+            return rect
+        }
+        let width = min(388, visibleFrame.width)
+        let top = min(visibleFrame.maxY, anchor.map { $0.minY - 6 } ?? visibleFrame.maxY)
+        let height = min(680, max(0, top - visibleFrame.minY))
+        let center = anchor?.midX ?? visibleFrame.midX
+        let x = min(max(visibleFrame.minX, center - width / 2), visibleFrame.maxX - width)
+        return NSRect(x: x, y: top - height, width: width, height: height)
     }
 }
 
@@ -178,7 +192,7 @@ final class NotificationPanel: NSPanel {
     }
 }
 
-/// A native behind-window blur with a feathered leading edge. No enclosing card,
+/// A native behind-window blur with softly feathered edges. No enclosing card,
 /// border, title bar or window shadow. Each notification supplies its own surface.
 final class NotificationPaneSurface: NSView {
     let host: NSHostingView<AnyView>
@@ -195,10 +209,15 @@ final class NotificationPaneSurface: NSView {
         blur.frame = bounds
         // Native alpha masking preserves behind-window sampling, unlike flattening
         // the effect into a SwiftUI drawing group.
-        blur.maskImage = NSImage(size: NSSize(width: 256, height: 1), flipped: false) { rect in
-            NSGradient(colorsAndLocations: (NSColor.clear, 0),
-                       (NSColor.black.withAlphaComponent(0.7), 0.28),
-                       (NSColor.black, 1))!.draw(in: rect, angle: 0)
+        blur.maskImage = NSImage(size: NSSize(width: 128, height: 128), flipped: false) { rect in
+            NSGradient(colorsAndLocations: (NSColor.clear, 0), (NSColor.black, 0.08),
+                       (NSColor.black, 0.92), (NSColor.clear, 1))!.draw(in: rect, angle: 0)
+            let vertical = NSImage(size: rect.size, flipped: false) { bounds in
+                NSGradient(colorsAndLocations: (NSColor.clear, 0), (NSColor.black, 0.04),
+                           (NSColor.black, 0.96), (NSColor.clear, 1))!.draw(in: bounds, angle: 90)
+                return true
+            }
+            vertical.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
             return true
         }
         addSubview(blur)

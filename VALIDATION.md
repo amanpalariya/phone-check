@@ -160,3 +160,14 @@ Additional device checks:
   compositor's Liquid Glass or behind-window blur, so desktop blur appearance, actual
   mouse interaction, search/reply keyboard focus, Spaces/full-screen and multiple physical
   displays still need manual review. No paired-phone/device tests were run for this change.
+
+## Menu-bar anchored pane — October 28, 2026
+
+- Moved the floating pane beneath the menu-bar icon, centered on its screen-space bounds,
+  with clamping at either display edge and a compact 680-point maximum height. Kept the
+  independent notification cards and native blur; feathered all blur edges for the floating
+  placement. Startup ignores provisional status-item bounds until AppKit has positioned it.
+- Debug, review and release builds passed. Updated native-pane checks passed for icon
+  centering, vertical offset, both display edges, negative screen origins, constrained
+  displays, provisional startup bounds, scrolling and existing panel interactions.
+- No live visual or paired-phone checks were performed for this placement adjustment.

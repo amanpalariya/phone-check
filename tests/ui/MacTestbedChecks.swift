@@ -63,9 +63,18 @@ func runTestbedChecks() {
 
 func runPaneChecks() {
     let screen = NSRect(x: -1440, y: 180, width: 1440, height: 850)
-    let frame = NotificationPaneLayout.frame(in: screen)
-    precondition(frame.maxX == screen.maxX && frame.minY == screen.minY && frame.height == screen.height)
-    precondition(screen.contains(frame), "Pane must fit secondary screens with negative origins")
+    let anchor = NSRect(x: -800, y: screen.maxY, width: 30, height: 24)
+    let frame = NotificationPaneLayout.frame(in: screen, anchor: anchor)
+    precondition(frame.midX == anchor.midX && frame.maxY == anchor.minY - 6)
+    precondition(frame.height == 680 && screen.contains(frame), "Pane must fit secondary screens with negative origins")
+    for x in [screen.minX, screen.maxX - 20] {
+        let edge = NotificationPaneLayout.frame(in: screen, anchor: NSRect(x: x, y: screen.maxY, width: 20, height: 24))
+        precondition(screen.contains(edge), "Menu-bar anchors near either edge must stay onscreen")
+    }
+    let small = NSRect(x: 150, y: -400, width: 360, height: 400)
+    precondition(small.contains(NotificationPaneLayout.frame(in: small, anchor: nil)), "Small screens must constrain the pane")
+    precondition(NotificationPaneLayout.frame(in: screen, anchor: .zero).height == 680,
+                 "An unpositioned status item must not collapse the pane")
     let model = Companion(startServices: false)
     let testbed = NotificationTestbed()
     testbed.showAll()
@@ -80,7 +89,7 @@ func runPaneChecks() {
     let surface = panel.contentView as! NotificationPaneSurface
     let blur = surface.subviews.compactMap { $0 as? NSVisualEffectView }.first!
     precondition(blur.blendingMode == .behindWindow && blur.maskImage != nil)
-    precondition(surface.host.frame == surface.bounds, "Content must follow the screen-sized surface")
+    precondition(surface.host.frame == surface.bounds, "Content must follow the anchored surface")
     func checkScroll(_ view: NSView) {
         if let scroll = view as? NotificationOverlayScrollView {
             precondition(scroll.scrollerStyle == .overlay)
