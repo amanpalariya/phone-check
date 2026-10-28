@@ -37,7 +37,7 @@ struct PhoneCheckCoreTests {
         }
         let sections = NotificationSection.sections(Array(state.items.values))
         try check(sections.count == 2)
-        try check(sections.allSatisfy { $0.children.count == 1 && $0.children[0].groupSummary == false })
+        try check(sections.allSatisfy { $0.children.isEmpty && $0.notice.groupSummary == false && $0.summary != nil })
         try check(NotificationSection.count(Array(state.items.values)) == 2)
         _ = state.remove("Gmail-summary")
         try check(NotificationSection.count(Array(state.items.values)) == 2)
@@ -84,6 +84,16 @@ struct PhoneCheckCoreTests {
         try check(orphan[0].id == sections[0].id)
         let single = NotificationSection.sections([second])
         try check(single.count == 1 && single[0].notice.key == "second" && single[0].children.isEmpty)
+        for members in [[summary, second], [second, summary], [summary, second, second]] {
+            let singleChild = NotificationSection.sections(members)
+            try check(singleChild.count == 1)
+            try check(singleChild[0].notice.key == "second" && singleChild[0].children.isEmpty)
+            try check(singleChild[0].summary?.key == "summary")
+            try check(singleChild[0].id == single[0].id)
+        }
+        let afterRemoval = NotificationSection.sections([summary, first])
+        try check(afterRemoval.count == 1 && afterRemoval[0].children.isEmpty)
+        try check(afterRemoval[0].notice.key == "first")
         let loneSummary = NotificationSection.sections([summary])
         try check(loneSummary.count == 1 && loneSummary[0].notice.key == "summary")
         let empty = NotificationSection.sections([])

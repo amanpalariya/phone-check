@@ -10,7 +10,7 @@ struct NotificationList: View {
         VStack(spacing: 0) {
             ForEach(sections) { section in
                 if section.children.isEmpty {
-                    RichNoticeRow(notice: section.notice, commands: commands)
+                    RichNoticeRow(notice: section.notice, commands: commands, summary: section.summary)
                 } else {
                     NotificationGroup(summary: section.summary, children: section.children, commands: commands)
                 }
@@ -105,9 +105,20 @@ private struct NotificationGroup: View {
                     NotificationReplyComposer(notice: summary, commands: commands).padding(.horizontal, 18)
                 }
             } else {
-                NotificationPreview(notice: latest, count: children.count) { expansionButton }
-                    .padding(10)
-                    .modifier(NotificationCard(canDismiss: canDismiss, dismiss: dismissGroup))
+                Button(action: toggleExpansion) {
+                    NotificationPreview(notice: latest, count: children.count) {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                            .frame(width: 24, height: 24)
+                    }
+                    .padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Expand \(latest.app) group, \(children.count) notifications")
+                    .accessibilityValue("Collapsed")
+                    .modifier(NotificationCard(canDismiss: canDismiss, dismiss: dismissGroup,
+                                               stackDepth: min(2, children.count - 1)))
                     .contextMenu { if let summary { NotificationGroupActions(notice: summary, commands: commands) } }
             }
             if let summary, let feedback = commands.feedback[summary.key] {
@@ -119,8 +130,11 @@ private struct NotificationGroup: View {
     }
     private var expansionButton: some View {
         NotificationChevron(expanded: presentation.expanded, subject: "group") {
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { presentation.expanded.toggle() }
+            toggleExpansion()
         }
+    }
+    private func toggleExpansion() {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { presentation.expanded.toggle() }
     }
     private func dismissGroup() {
         if let summary, summary.dismissible { commands.dismiss(summary) }
@@ -134,7 +148,7 @@ private struct NotificationGroup: View {
 }
 
 /// Summary capabilities belong to the group, rather than an extra notification row.
-private struct NotificationGroupActions: View {
+struct NotificationGroupActions: View {
     let notice: Notice
     @ObservedObject var commands: NotificationCommandController
     private var pending: Bool { commands.pendingKeys.contains(notice.key) }

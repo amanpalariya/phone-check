@@ -9,12 +9,14 @@ private final class RowPresentation: ObservableObject {
 struct RichNoticeRow: View {
     let notice: Notice
     @ObservedObject var commands: NotificationCommandController
+    let summary: Notice?
     @StateObject private var presentation: RowPresentation
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(notice: Notice, commands: NotificationCommandController, initiallyExpanded: Bool = false) {
+    init(notice: Notice, commands: NotificationCommandController, initiallyExpanded: Bool = false, summary: Notice? = nil) {
         self.notice = notice
         self.commands = commands
+        self.summary = summary
         _presentation = StateObject(wrappedValue: RowPresentation(expanded: initiallyExpanded))
     }
     private var pending: Bool { commands.pendingKeys.contains(notice.key) }
@@ -66,6 +68,12 @@ struct RichNoticeRow: View {
                 }.padding(.top, 2)
             }
             NotificationReplyComposer(notice: notice, commands: commands)
+            if let summary {
+                NotificationReplyComposer(notice: summary, commands: commands)
+                if let feedback = commands.feedback[summary.key] {
+                    Text(feedback).font(.caption).foregroundStyle(.secondary)
+                }
+            }
             if let feedback = commands.feedback[notice.key] {
                 Text(feedback).font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -88,6 +96,10 @@ struct RichNoticeRow: View {
         .contextMenu {
             if notice.openable == true {
                 Button("Open on phone") { commands.open(notice) }.disabled(pending)
+            }
+            if let summary {
+                Divider()
+                NotificationGroupActions(notice: summary, commands: commands)
             }
         }
         .onChange(of: commands.replyTarget) { _, target in

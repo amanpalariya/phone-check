@@ -38,10 +38,12 @@ public struct NotificationSection: Identifiable {
             guard seen.insert(id).inserted else { return nil }
             let summary = members.first { $0.groupSummary == true }
             let children = members.filter { $0.groupSummary != true }
-            // A summary and one child still form a group. A lone child or
-            // summary remains a normal notification with its original actions.
-            if children.count > 1 || (summary != nil && !children.isEmpty) {
+            // Summaries are containers, so only actual children make a stack.
+            if children.count > 1 {
                 return NotificationSection(id: id.stableID, notice: children[0], summary: summary, children: children)
+            }
+            if let child = children.first {
+                return NotificationSection(id: "notice:\(child.key)", notice: child, summary: summary, children: [])
             }
             return NotificationSection(id: "notice:\(notice.key)", notice: notice, summary: nil, children: [])
         }

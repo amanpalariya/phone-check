@@ -15,6 +15,7 @@ struct NotificationCard: ViewModifier {
     let canDismiss: Bool
     let dismiss: () -> Void
     var surface = true
+    var stackDepth = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var presentation = CardPresentation()
     @FocusState private var closeFocused: Bool
@@ -25,7 +26,19 @@ struct NotificationCard: ViewModifier {
         content
             .background {
                 if surface {
-                    NotificationSurface()
+                    ZStack {
+                        if stackDepth > 1 {
+                            NotificationSurface()
+                                .padding(.horizontal, 12).offset(y: 12)
+                                .allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                        if stackDepth > 0 {
+                            NotificationSurface()
+                                .padding(.horizontal, 6).offset(y: 6)
+                                .allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                        NotificationSurface()
+                    }
                 }
             }
             .padding(6)
@@ -46,6 +59,7 @@ struct NotificationCard: ViewModifier {
                     .allowsHitTesting(showClose)
                 }
             }
+            .padding(.bottom, CGFloat(min(2, stackDepth)) * 6)
             .offset(x: reduceMotion ? 0 : presentation.translation)
             .background(alignment: presentation.translation < 0 ? .trailing : .leading) {
                 if canDismiss && abs(presentation.translation) > 6 && !reduceMotion {
