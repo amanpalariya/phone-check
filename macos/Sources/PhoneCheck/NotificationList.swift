@@ -92,12 +92,12 @@ private struct NotificationGroup: View {
         VStack(alignment: .leading, spacing: 0) {
             if presentation.expanded {
                 HStack(spacing: 8) {
-                    Text(latest.app).font(.subheadline.weight(.semibold))
+                    Text(latest.app).font(.title3.weight(.semibold))
                     Text("\(children.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
                     Spacer(minLength: 0)
                     expansionButton
                 }
-                .padding(.horizontal, 12).padding(.vertical, 6)
+                .padding(.horizontal, 12)
                 .modifier(NotificationCard(canDismiss: canDismiss, dismiss: dismissGroup, surface: false))
                 .contextMenu { if let summary { NotificationGroupActions(notice: summary, commands: commands) } }
                 ForEach(children) { RichNoticeRow(notice: $0, commands: commands) }
@@ -125,6 +125,7 @@ private struct NotificationGroup: View {
                 Text(feedback).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 18)
             }
         }
+        .padding(.vertical, presentation.expanded ? 16 : 0)
         .onChange(of: commands.replyTarget) { _, target in revealReply(target) }
         .onAppear { revealReply(commands.replyTarget) }
     }
