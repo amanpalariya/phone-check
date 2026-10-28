@@ -21,6 +21,9 @@ struct RichNoticeRow: View {
     private var actions: [NoticeAction] { notice.actions ?? [] }
     private var immediateControls: Bool { notice.kind == "media" || notice.kind == "call" }
     private var replying: Bool { commands.replyTarget?.key == notice.key }
+    private var showsFooter: Bool {
+        presentation.expanded && !immediateControls && !replying && (!actions.isEmpty || notice.openable == true)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             if presentation.expanded {
@@ -76,7 +79,10 @@ struct RichNoticeRow: View {
                 }
             }
         }
-        .padding(presentation.expanded ? 12 : 10).frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, presentation.expanded ? 12 : 10)
+        .padding(.top, presentation.expanded ? 12 : 10)
+        .padding(.bottom, showsFooter ? 4 : presentation.expanded ? 12 : 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(NotificationCard(canDismiss: notice.dismissible && !pending) { commands.dismiss(notice) })
         .accessibilityElement(children: .contain)
         .contextMenu {

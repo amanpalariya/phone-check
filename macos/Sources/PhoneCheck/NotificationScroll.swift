@@ -57,40 +57,49 @@ struct NotificationScroll<Content: View>: NSViewRepresentable {
 }
 
 final class NotificationOverlayScrollView: NSScrollView {
-    private let bottomFade = CAGradientLayer()
+    private let edgeFade = CAGradientLayer()
+    private(set) var hasMoreAbove = false
     private(set) var hasMoreBelow = false
 
     override func layout() {
         super.layout()
-        updateBottomFade()
+        updateEdgeFade()
     }
 
     override func reflectScrolledClipView(_ clipView: NSClipView) {
         super.reflectScrolledClipView(clipView)
-        updateBottomFade()
+        updateEdgeFade()
     }
 
-    private func updateBottomFade() {
+    private func updateEdgeFade() {
         guard let documentView else { return }
         let visible = documentVisibleRect
+        hasMoreAbove = documentView.isFlipped
+            ? visible.minY > documentView.bounds.minY + 1
+            : visible.maxY < documentView.bounds.maxY - 1
         hasMoreBelow = documentView.isFlipped
             ? visible.maxY < documentView.bounds.maxY - 1
             : visible.minY > documentView.bounds.minY + 1
         contentView.wantsLayer = true
         contentView.layer?.masksToBounds = true
-        guard hasMoreBelow, contentView.bounds.height > 0 else {
+        guard hasMoreAbove || hasMoreBelow, contentView.bounds.height > 0 else {
             contentView.layer?.mask = nil
             return
         }
         guard let layer = contentView.layer else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        bottomFade.frame = layer.bounds
-        bottomFade.startPoint = CGPoint(x: 0.5, y: 0)
-        bottomFade.endPoint = CGPoint(x: 0.5, y: 1)
-        bottomFade.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
-        bottomFade.locations = [0, NSNumber(value: max(0, 1 - 32 / layer.bounds.height)), 1]
-        layer.mask = bottomFade
+        let fade = min(0.5, 32 / layer.bounds.height)
+        edgeFade.frame = layer.bounds
+        edgeFade.startPoint = CGPoint(x: 0.5, y: 0)
+        edgeFade.endPoint = CGPoint(x: 0.5, y: 1)
+        edgeFade.colors = [
+            hasMoreAbove ? NSColor.clear.cgColor : NSColor.black.cgColor,
+            NSColor.black.cgColor, NSColor.black.cgColor,
+            hasMoreBelow ? NSColor.clear.cgColor : NSColor.black.cgColor
+        ]
+        edgeFade.locations = [0, NSNumber(value: fade), NSNumber(value: 1 - fade), 1]
+        layer.mask = edgeFade
         CATransaction.commit()
     }
 

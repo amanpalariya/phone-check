@@ -131,14 +131,23 @@ func runPaneChecks() {
                 let bottom = document.isFlipped ? max(document.bounds.minY, document.bounds.maxY - scroll.contentView.bounds.height) : document.bounds.minY
                 scroll.contentView.scroll(to: NSPoint(x: 0, y: bottom))
                 scroll.reflectScrolledClipView(scroll.contentView)
-                precondition(!scroll.hasMoreBelow && scroll.contentView.layer?.mask == nil,
+                precondition(!scroll.hasMoreBelow,
                              "The final notification must not remain faded at the end")
                 if document.frame.height > scroll.contentView.bounds.height + 1 {
+                    precondition(scroll.hasMoreAbove && scroll.contentView.layer?.mask != nil,
+                                 "Notifications above the viewport need a top fade cue")
                     let top = document.isFlipped ? document.bounds.minY : document.bounds.maxY - scroll.contentView.bounds.height
                     scroll.contentView.scroll(to: NSPoint(x: 0, y: top))
                     scroll.reflectScrolledClipView(scroll.contentView)
-                    precondition(scroll.hasMoreBelow && scroll.contentView.layer?.mask != nil,
+                    precondition(!scroll.hasMoreAbove && scroll.hasMoreBelow && scroll.contentView.layer?.mask != nil,
                                  "Overflowing notifications need a bottom fade cue")
+                    scroll.contentView.scroll(to: NSPoint(x: 0, y: (top + bottom) / 2))
+                    scroll.reflectScrolledClipView(scroll.contentView)
+                    precondition(scroll.hasMoreAbove && scroll.hasMoreBelow,
+                                 "Both edges need fade cues in the middle of the list")
+                } else {
+                    precondition(!scroll.hasMoreAbove && scroll.contentView.layer?.mask == nil,
+                                 "A list that fits must have no edge fades")
                 }
                 scroll.contentView.scroll(to: origin)
                 scroll.reflectScrolledClipView(scroll.contentView)
