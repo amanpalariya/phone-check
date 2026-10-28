@@ -28,14 +28,10 @@ struct NotificationCard: ViewModifier {
                 if surface {
                     ZStack {
                         if stackDepth > 1 {
-                            NotificationSurface()
-                                .padding(.horizontal, 12).offset(y: 12)
-                                .allowsHitTesting(false).accessibilityHidden(true)
+                            NotificationStackEdge(offset: 12)
                         }
                         if stackDepth > 0 {
-                            NotificationSurface()
-                                .padding(.horizontal, 6).offset(y: 6)
-                                .allowsHitTesting(false).accessibilityHidden(true)
+                            NotificationStackEdge(offset: 6)
                         }
                         NotificationSurface()
                     }
@@ -83,6 +79,34 @@ struct NotificationCard: ViewModifier {
     private func finishSwipe(_ distance: CGFloat) {
         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { presentation.translation = 0 }
         if canDismiss && abs(distance) >= threshold { dismiss() }
+    }
+}
+
+/// Only the exposed rear edge is drawn. The front card sees the same backdrop
+/// as a single notification, without another glass surface underneath it.
+private struct NotificationStackEdge: View {
+    let offset: CGFloat
+    private var radius: CGFloat {
+        if #available(macOS 26.0, *) { return 20 }
+        return 16
+    }
+
+    var body: some View {
+        NotificationSurface()
+            .padding(.horizontal, offset)
+            .offset(y: offset)
+            .mask {
+                GeometryReader { proxy in
+                    Path { path in
+                        path.addRect(CGRect(origin: .zero,
+                                            size: CGSize(width: proxy.size.width, height: proxy.size.height + offset)))
+                        path.addPath(RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .path(in: CGRect(origin: .zero, size: proxy.size)))
+                    }.fill(style: FillStyle(eoFill: true))
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
