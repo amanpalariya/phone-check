@@ -25,7 +25,11 @@ struct NotificationCard: ViewModifier {
         content
             .background {
                 if surface {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial)
+                    if #available(macOS 26.0, *) {
+                        Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    } else {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial)
+                    }
                 }
             }
             .padding(6)

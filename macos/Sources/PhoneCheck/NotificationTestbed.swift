@@ -1,12 +1,12 @@
 import SwiftUI
 import PhoneCheckCore
 
-/// A simulated phone shared by the testbed window and optional popover preview.
+/// A simulated phone shared by the testbed window and optional floating-pane preview.
 final class NotificationTestbed: ObservableObject {
     @Published private(set) var notices: [Notice] = []
     @Published private(set) var receipt = ""
     @Published var result = "sent"
-    @Published var showsInPopover = false
+    @Published var showsInPane = false
     private var generation = 0
     lazy var commands = NotificationCommandController(
         current: { [weak self] key in self?.notices.first { $0.key == key } },
@@ -77,7 +77,7 @@ struct NotificationTestbedView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Notification testbed").font(.headline)
                 Text("Local samples · no phone needed").font(.caption).foregroundStyle(.secondary)
-                Toggle("Show in popover", isOn: $model.showsInPopover)
+                Toggle("Show in notification pane", isOn: $model.showsInPane)
                     .toggleStyle(.switch).controlSize(.small)
                 Text("Click Phone Check in the menu bar.").font(.caption).foregroundStyle(.secondary)
                 ScrollView {

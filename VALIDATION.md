@@ -133,3 +133,30 @@ Additional device checks:
   visually inspected the companion preview in light/dark. Scrolling/overflow checks passed.
   Opening the actual menu-bar popover was not automated; click the menu-bar icon after enabling
   the toggle in the testbed.
+
+## Floating macOS notification pane — October 28, 2026
+
+- Preserved all prior work in checkpoint `354a7ac` and implemented this change on
+  `codex/floating-notification-pane`.
+- Replaced the SwiftUI menu-bar popover and duplicate companion window with an AppKit
+  status item and a reusable borderless, nonactivating panel. It uses the right edge of
+  the status item's display, a native behind-window blur with a feathered leading edge,
+  and independent Liquid Glass notification cards on macOS 26 (regular-material fallback).
+  There is no outer card, window border, arrow or enclosing window shadow.
+- The same panel handles first-run pairing, app reopening and banner actions. Search,
+  groups, action buttons, replies, confirmed phone dismissal, and the shared testbed remain
+  in the existing presentation/models. Feed height follows the selected display. Escape,
+  menu-bar toggling, focus changes and outside mouse events close the panel. Native menus
+  are exempt from focus/local-click dismissal while tracking.
+- Debug, release and visual review builds passed. All 10 core checks, six Firebase/attention
+  groups, and testbed checks passed. New native-panel checks passed for secondary-display
+  geometry, window/material setup, overlay scrolling/overflow, Escape, menu-bar toggle,
+  native-menu tracking, focus dismissal, banner reopening and hosting-tree reuse.
+  Light/dark fixture and expanded long-reply/bottom renders passed layout checks.
+- Updated `/Applications/Phone Check.app`, verified its signature, and confirmed the new
+  executable remained running. Preserved the previous installed bundle at
+  `macos/build/Phone Check-before-floating-pane.app` (ignored build output).
+- Live UI automation timed out twice. Fixture bitmap rendering does not capture the
+  compositor's Liquid Glass or behind-window blur, so desktop blur appearance, actual
+  mouse interaction, search/reply keyboard focus, Spaces/full-screen and multiple physical
+  displays still need manual review. No paired-phone/device tests were run for this change.

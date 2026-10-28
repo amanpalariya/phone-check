@@ -11,6 +11,20 @@ struct MaterialReview {
             runTestbedChecks()
             return
         }
+        if CommandLine.arguments.contains("--pane-checks") {
+            runPaneChecks()
+            return
+        }
+        if CommandLine.arguments.contains("--pane") {
+            app.setActivationPolicy(.accessory)
+            let testbed = NotificationTestbed()
+            testbed.showAll()
+            testbed.showsInPane = true
+            let controller = NotificationPaneController(model: Companion(startServices: false), testbed: testbed)
+            controller.show()
+            withExtendedLifetime(controller) { app.run() }
+            return
+        }
         app.setActivationPolicy(.regular)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 470),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -150,7 +164,7 @@ private struct RichReview: View {
             .onAppear {
                 if CommandLine.arguments.contains("--testbed-popover") {
                     testbed.showAll()
-                    testbed.showsInPopover = true
+                    testbed.showsInPane = true
                 }
                 if CommandLine.arguments.contains("--companion") { companion.showPreview(notices) }
                 let key = CommandLine.arguments.contains("--long-reply") ? "long" : CommandLine.arguments.contains("--summary-reply") ? "inbox-summary" : CommandLine.arguments.contains("--group-reply") ? "inbox-0" : "chat"
@@ -193,6 +207,6 @@ private struct RichReview: View {
             }
         }
             .environment(\.appearsActive, true).environment(\.controlActiveState, .key)
-            .frame(width: 340, height: 680).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .frame(width: 340, height: 680)
     }
 }

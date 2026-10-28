@@ -6,57 +6,22 @@ import PhoneCheckCore
 @main
 struct PhoneCheckApp: App {
     @NSApplicationDelegateAdaptor(CompanionAppDelegate.self) private var delegate
-    @StateObject private var model = Companion()
-    @StateObject private var testbed = NotificationTestbed()
-
     var body: some Scene {
-        MenuBarExtra {
-            CompanionView(model: model, testbed: testbed)
-        } label: {
-            CompanionMenuLabel(model: model, testbed: testbed)
-        }
-        .menuBarExtraStyle(.window)
-
-        // MenuBarExtra has no public programmatic-open API. Banner actions and
-        // first-run setup use a standard window instead of inspecting private UI.
-        Window("Phone Check", id: "phone-check") {
-            CompanionView(model: model, testbed: testbed)
-        }
-        .windowResizability(.contentSize)
-
-        Window("Notification Testbed", id: "notification-testbed") {
-            NotificationTestbedView(model: testbed)
-        }
-        .windowResizability(.contentSize)
-    }
-}
-
-private struct CompanionMenuLabel: View {
-    @ObservedObject var model: Companion
-    @ObservedObject var testbed: NotificationTestbed
-    @Environment(\.openWindow) private var openWindow
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: testbed.showsInPopover ? "testtube.2" : "iphone")
-            if testbed.showsInPopover {
-                Text("\(NotificationSection.count(testbed.notices))").monospacedDigit()
-            } else if model.connected { Text("\(model.notificationCount)").monospacedDigit() }
-        }
-            .accessibilityLabel(testbed.showsInPopover ? "Phone Check testbed, \(NotificationSection.count(testbed.notices)) notifications" : "Phone Check, \(model.status), \(model.notificationCount) notifications")
-            .onReceive(NotificationCenter.default.publisher(for: .init("PhoneCheckShow"))) { _ in
-                NSApp.activate(ignoringOtherApps: true)
-                openWindow(id: "phone-check")
-            }
-            .onAppear {
-                if !model.paired { openWindow(id: "phone-check") }
-            }
+        Settings { EmptyView() }
     }
 }
 #endif
 
 final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
+    private var pane: NotificationPaneController?
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let model = Companion()
+        let controller = NotificationPaneController(model: model, testbed: NotificationTestbed())
+        pane = controller
+        if !model.paired { controller.show() }
+    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        NotificationCenter.default.post(name: .init("PhoneCheckShow"), object: nil)
+        pane?.show()
         return false
     }
 }
@@ -65,18 +30,19 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
 struct CompanionView: View {
     @ObservedObject var model: Companion
     @ObservedObject var testbed = NotificationTestbed()
-    @Environment(\.openWindow) private var openWindow
+    var showTestbed: () -> Void = {}
+    var feedMaximumHeight: CGFloat = 480
     var body: some View {
         VStack(spacing: 0) {
             header
-            if testbed.showsInPopover {
+            if testbed.showsInPane {
                 testbedContent
             } else if !model.paired {
                 if model.pairing { pairing } else { welcome }
             } else {
                 pairedContent
             }
-            if !testbed.showsInPopover, let error = model.error {
+            if !testbed.showsInPane, let error = model.error {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(.caption).foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -98,12 +64,12 @@ struct CompanionView: View {
             HStack {
                 Text("Testbed").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Exit") { testbed.showsInPopover = false }.buttonStyle(.borderless)
+                Button("Exit") { testbed.showsInPane = false }.buttonStyle(.borderless)
             }.padding(.horizontal, 16)
             if testbed.notices.isEmpty {
                 Text("Add samples in the testbed.").foregroundStyle(.secondary).padding(24)
             } else {
-                NotificationFeed(notices: testbed.notices, commands: testbed.commands)
+                NotificationFeed(notices: testbed.notices, commands: testbed.commands, maximumHeight: feedMaximumHeight)
             }
         }.padding(.bottom, 10)
     }
@@ -113,7 +79,7 @@ struct CompanionView: View {
             Menu {
                 Button("Notification testbed…") {
                     NSApp.activate(ignoringOtherApps: true)
-                    openWindow(id: "notification-testbed")
+                    showTestbed()
                 }
                 Divider()
                 if model.paired {
@@ -134,15 +100,15 @@ struct CompanionView: View {
             Text("Phone Check").font(.headline)
             Spacer(minLength: 0)
             HStack(spacing: 6) {
-                if testbed.showsInPopover || model.connected {
-                    let count = testbed.showsInPopover ? NotificationSection.count(testbed.notices) : model.notificationCount
+                if testbed.showsInPane || model.connected {
+                    let count = testbed.showsInPane ? NotificationSection.count(testbed.notices) : model.notificationCount
                     Text("\(count)").font(.caption).monospacedDigit()
                         .accessibilityLabel("\(count) notifications")
                 }
-                Circle().fill(testbed.showsInPopover ? Color.orange : model.connected ? Color.green : Color.secondary)
+                Circle().fill(testbed.showsInPane ? Color.orange : model.connected ? Color.green : Color.secondary)
                     .frame(width: 6, height: 6)
-                    .help(testbed.showsInPopover ? "Testbed" : model.status)
-                    .accessibilityLabel(testbed.showsInPopover ? "Testbed" : model.status)
+                    .help(testbed.showsInPane ? "Testbed" : model.status)
+                    .accessibilityLabel(testbed.showsInPane ? "Testbed" : model.status)
             }.frame(minWidth: 28, minHeight: 28)
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
@@ -215,7 +181,7 @@ struct CompanionView: View {
                 .padding(.horizontal, 16).padding(.bottom, 8)
             }
             if model.connected && !model.notices.isEmpty {
-                NotificationFeed(notices: model.notices, commands: model.commands)
+                NotificationFeed(notices: model.notices, commands: model.commands, maximumHeight: feedMaximumHeight)
                     .padding(.bottom, 10)
             } else {
                 VStack(spacing: 10) {

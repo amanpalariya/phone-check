@@ -1,0 +1,211 @@
+import AppKit
+import Combine
+import SwiftUI
+import PhoneCheckCore
+
+/// Own the menu-bar entry and a borderless surface, rather than an NSPopover.
+/// Notification state and command confirmation remain in the existing models.
+final class NotificationPaneController: NSObject, NSWindowDelegate {
+    private let model: Companion
+    private let testbed: NotificationTestbed
+    private let statusItem: NSStatusItem
+    private var panel: NotificationPanel?
+    private var testbedWindow: NSWindow?
+    private var subscriptions = Set<AnyCancellable>()
+    private var outsideMonitor: Any?
+    private var localMonitor: Any?
+    private var trackingMenu = false
+
+    init(model: Companion, testbed: NotificationTestbed) {
+        self.model = model
+        self.testbed = testbed
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        super.init()
+        if let button = statusItem.button {
+            button.target = self
+            button.action = #selector(toggle)
+            button.imagePosition = .imageLeading
+            button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        }
+        Publishers.Merge(model.objectWillChange, testbed.objectWillChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateStatusItem() }
+            .store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: .init("PhoneCheckShow"))
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.show() }
+            .store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .sink { [weak self] _ in
+                guard let self, panel?.isVisible == true else { return }
+                show()
+            }.store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)
+            .sink { [weak self] _ in self?.trackingMenu = true }.store(in: &subscriptions)
+        NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)
+            .sink { [weak self] _ in self?.trackingMenu = false }.store(in: &subscriptions)
+        updateStatusItem()
+    }
+
+    private func updateStatusItem() {
+        guard let button = statusItem.button else { return }
+        let samples = testbed.showsInPane
+        let count = samples ? NotificationSection.count(testbed.notices) : model.notificationCount
+        button.image = NSImage(systemSymbolName: samples ? "testtube.2" : "iphone", accessibilityDescription: nil)
+        button.image?.isTemplate = true
+        button.title = samples || model.connected ? " \(count)" : ""
+        button.setAccessibilityLabel("Phone Check, \(samples ? "Testbed" : model.status), \(count) notifications")
+        button.toolTip = "Phone Check"
+    }
+
+    @objc private func toggle() {
+        if panel?.isVisible == true { hide() } else { show() }
+    }
+
+    func show() {
+        guard let screen = statusItem.button?.window?.screen ?? NSScreen.main else { return }
+        let frame = NotificationPaneLayout.frame(in: screen.visibleFrame)
+        let panel: NotificationPanel
+        if let existing = self.panel { panel = existing }
+        else {
+            panel = NotificationPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
+                                      backing: .buffered, defer: false)
+            panel.isReleasedWhenClosed = false
+            panel.title = "Phone Check notifications"
+            panel.setAccessibilityLabel("Phone Check notifications")
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = false
+            panel.level = .popUpMenu
+            panel.hidesOnDeactivate = false
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+            panel.delegate = self
+            panel.dismiss = { [weak self] in self?.hide() }
+            self.panel = panel
+        }
+        panel.setFrame(frame, display: false)
+        // Reuse the hosting tree when reopening so expanded rows and reply drafts survive.
+        if let surface = panel.contentView as? NotificationPaneSurface {
+            surface.host.rootView = root(height: frame.height)
+        } else {
+            panel.contentView = NotificationPaneSurface(frame: NSRect(origin: .zero, size: frame.size),
+                                                       root: root(height: frame.height))
+        }
+        panel.makeKeyAndOrderFront(nil)
+        // Start with no search focus; Tab and clicking still enter native editors.
+        panel.makeFirstResponder(panel.contentView)
+        installMonitors()
+    }
+
+    private func root(height: CGFloat) -> AnyView {
+        AnyView(CompanionView(model: model, testbed: testbed, showTestbed: { [weak self] in self?.showTestbed() },
+                              feedMaximumHeight: max(60, height - 190))
+            .padding(.top, 12).padding(.trailing, 16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing))
+    }
+
+    func hide() {
+        panel?.orderOut(nil)
+        removeMonitors()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === panel, panel?.attachedSheet == nil, !trackingMenu else { return }
+        hide()
+    }
+
+    private func installMonitors() {
+        removeMonitors()
+        outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
+            self?.hide()
+        }
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
+            guard let self else { return event }
+            if event.window !== panel && event.window !== statusItem.button?.window && panel?.attachedSheet == nil && !trackingMenu {
+                hide()
+            }
+            return event
+        }
+    }
+
+    private func removeMonitors() {
+        if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }
+        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
+        outsideMonitor = nil; localMonitor = nil
+    }
+
+    private func showTestbed() {
+        hide()
+        if testbedWindow == nil {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 581, height: 680),
+                                  styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+            window.title = "Notification Testbed"
+            window.isReleasedWhenClosed = false
+            window.contentView = NSHostingView(rootView: NotificationTestbedView(model: testbed))
+            window.center()
+            testbedWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        testbedWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    deinit {
+        if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }
+        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
+        NSStatusBar.system.removeStatusItem(statusItem)
+    }
+}
+
+/// Screen coordinates include negative origins on secondary displays.
+enum NotificationPaneLayout {
+    static func frame(in visibleFrame: NSRect) -> NSRect {
+        NSRect(x: visibleFrame.maxX - min(404, visibleFrame.width), y: visibleFrame.minY,
+               width: min(404, visibleFrame.width), height: visibleFrame.height)
+    }
+}
+
+final class NotificationPanel: NSPanel {
+    var dismiss: () -> Void = {}
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+    override func cancelOperation(_ sender: Any?) { dismiss() }
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown, event.keyCode == 53, attachedSheet == nil {
+            dismiss()
+            return
+        }
+        super.sendEvent(event)
+    }
+}
+
+/// A native behind-window blur with a feathered leading edge. No enclosing card,
+/// border, title bar or window shadow. Each notification supplies its own surface.
+final class NotificationPaneSurface: NSView {
+    let host: NSHostingView<AnyView>
+    private let blur = NSVisualEffectView()
+    override var acceptsFirstResponder: Bool { true }
+
+    init(frame: NSRect, root: AnyView) {
+        host = NSHostingView(rootView: root)
+        super.init(frame: frame)
+        blur.material = .sidebar
+        blur.blendingMode = .behindWindow
+        blur.state = .active
+        blur.autoresizingMask = [.width, .height]
+        blur.frame = bounds
+        // Native alpha masking preserves behind-window sampling, unlike flattening
+        // the effect into a SwiftUI drawing group.
+        blur.maskImage = NSImage(size: NSSize(width: 256, height: 1), flipped: false) { rect in
+            NSGradient(colorsAndLocations: (NSColor.clear, 0),
+                       (NSColor.black.withAlphaComponent(0.7), 0.28),
+                       (NSColor.black, 1))!.draw(in: rect, angle: 0)
+            return true
+        }
+        addSubview(blur)
+        host.sizingOptions = []
+        host.frame = bounds
+        host.autoresizingMask = [.width, .height]
+        addSubview(host)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}

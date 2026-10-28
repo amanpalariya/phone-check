@@ -29,6 +29,7 @@ private final class FeedPresentation: ObservableObject {
 struct NotificationFeed: View {
     let notices: [Notice]
     @ObservedObject var commands: NotificationCommandController
+    var maximumHeight: CGFloat = 480
     @StateObject private var presentation = FeedPresentation()
     private var filtered: [Notice] {
         guard !presentation.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return notices }
@@ -59,7 +60,7 @@ struct NotificationFeed: View {
                         if abs(presentation.contentHeight - height) > 1 { presentation.contentHeight = height }
                     }
             }
-            .frame(height: min(max(60, presentation.contentHeight), max(180, min(480, (NSScreen.main?.visibleFrame.height ?? 800) - 200))))
+            .frame(height: min(max(60, presentation.contentHeight), max(60, maximumHeight)))
         }
     }
 }

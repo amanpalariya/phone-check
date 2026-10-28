@@ -34,17 +34,22 @@ SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/build-macos.s
 
 Open `macos/Package.swift` in Xcode to edit the Mac sources. Launch the packaged `.app`, rather than the bare Swift executable, so notification authorization has a bundle identity. Distribution signing and notarization are not configured.
 
+Click the menu-bar icon to open a right-edge notification pane: separate glass cards over a softly fading desktop blur. Click the icon again, press Escape, or click outside to close it. Search, expanded groups and replies stay in the pane.
+
 For local UI testing, open the Mac companion's settings menu and choose **Notification testbed…**.
 Add any of the 16 sample types, or choose **Show all**. Expand samples to try actions and replies;
 use **Update last**, **Remove last**, and **Action result** to exercise updates, removals, and failures.
-Enable **Show in popover**, then click Phone Check in the menu bar to view and interact with
-the same samples there. **Exit** returns the popover to the phone feed. Samples use installed
+Enable **Show in notification pane**, then click Phone Check in the menu bar to view and interact with
+the same samples there. **Exit** returns the pane to the phone feed. Samples use installed
 Messages, Mail, Safari, App Store, Music, FaceTime, Voice Memos, and Calendar icons with fictional content.
 The testbed uses the real notification views with simulated phone responses, without pairing or system alerts.
 
 ```sh
 ./tests/ui/build-mac-review.sh
 macos/build/PhoneCheckMaterialReview.app/Contents/MacOS/PhoneCheckMaterialReview --testbed-checks
+macos/build/PhoneCheckMaterialReview.app/Contents/MacOS/PhoneCheckMaterialReview --pane-checks
+# Live panel preview with local samples:
+open -n macos/build/PhoneCheckMaterialReview.app --args --pane
 ```
 
 Core checks run without XCTest or a full Xcode install:
