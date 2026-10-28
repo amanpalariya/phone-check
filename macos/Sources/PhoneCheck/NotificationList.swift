@@ -102,7 +102,7 @@ private struct NotificationGroup: View {
                 }
             } else {
                 NotificationPreview(notice: latest, count: children.count) { expansionButton }
-                    .padding(12)
+                    .padding(10)
                     .modifier(NotificationCard(canDismiss: canDismiss, dismiss: dismissGroup))
                     .contextMenu { if let summary { NotificationGroupActions(notice: summary, commands: commands) } }
             }

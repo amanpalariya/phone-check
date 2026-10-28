@@ -8,7 +8,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/macos/Resources/PhoneCheck.icns" "$APP/Contents/Resources/PhoneCheck.icns"
 swiftc -parse-as-library -swift-version 5 -D PHONECHECK_VISUAL_TEST -target "$(uname -m)-apple-macos14.0" \
     -I "$BIN" "$BIN/PhoneCheckCore.o" \
-    "$ROOT"/macos/Sources/PhoneCheck/*.swift "$ROOT/tests/ui/MacMaterialReview.swift" \
+    "$ROOT"/macos/Sources/PhoneCheck/*.swift "$ROOT/tests/ui/MacMaterialReview.swift" "$ROOT/tests/ui/MacTestbedChecks.swift" \
     -o "$APP/Contents/MacOS/PhoneCheckMaterialReview"
 python3 - "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist" <<'PY'
 import plistlib, sys

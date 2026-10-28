@@ -7,12 +7,17 @@ import PhoneCheckCore
 struct MaterialReview {
     static func main() {
         let app = NSApplication.shared
+        if CommandLine.arguments.contains("--testbed-checks") {
+            runTestbedChecks()
+            return
+        }
         app.setActivationPolicy(.regular)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 470),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Phone Check — Material Review"
         window.contentView = NSHostingView(rootView: Group {
-            if CommandLine.arguments.contains("--setup") { Review() } else { RichReview() }
+            if CommandLine.arguments.contains("--testbed") { NotificationTestbedView() }
+            else if CommandLine.arguments.contains("--setup") { Review() } else { RichReview() }
         })
         if let flag = CommandLine.arguments.firstIndex(of: "--render"), CommandLine.arguments.count > flag + 1 {
             window.setContentSize(NSSize(width: 840, height: 740))
@@ -84,6 +89,7 @@ private struct Review: View {
 
 private struct RichReview: View {
     @StateObject private var companion = Companion(startServices: false)
+    @StateObject private var testbed = NotificationTestbed()
     @StateObject private var commands = NotificationCommandController(current: { _ in nil }, connected: { false }, send: { _ in })
     private let notices: [Notice] = {
         let json = #"[{"key":"chat","app":"Messages","title":"Weekend plans","body":"","revision":"1","dismissible":true,"postedAt":1,"kind":"messaging","messages":[{"sender":"Alex","text":"Coffee at 10?","time":1793075400000,"attachment":false},{"sender":"Sam","text":"See you there.","time":1793075460000,"attachment":false}],"actions":[{"id":"reply","title":"Reply","input":true,"freeform":true,"choices":["Yes","Later"],"enabled":true,"requiresUnlock":false,"destructive":false}],"openable":true},{"key":"progress","app":"Downloads","title":"Downloading update","body":"System update","revision":"2","dismissible":false,"postedAt":2,"kind":"progress","ongoing":true,"progress":{"value":75,"max":100,"indeterminate":false}},{"key":"media","app":"Music","title":"Morning playlist","body":"Sample artist","revision":"3","dismissible":true,"postedAt":3,"kind":"media","actions":[{"id":"pause","title":"Pause","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false},{"id":"next","title":"Next","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}]}]"#
@@ -142,6 +148,10 @@ private struct RichReview: View {
             pane.environment(\.colorScheme, .dark)
         }.padding(24).background(LinearGradient(colors: [.blue, .cyan, .orange], startPoint: .topLeading, endPoint: .bottomTrailing))
             .onAppear {
+                if CommandLine.arguments.contains("--testbed-popover") {
+                    testbed.showAll()
+                    testbed.showsInPopover = true
+                }
                 if CommandLine.arguments.contains("--companion") { companion.showPreview(notices) }
                 let key = CommandLine.arguments.contains("--long-reply") ? "long" : CommandLine.arguments.contains("--summary-reply") ? "inbox-summary" : CommandLine.arguments.contains("--group-reply") ? "inbox-0" : "chat"
                 if ["--reply", "--group-reply", "--long-reply", "--summary-reply", "--details"].contains(where: CommandLine.arguments.contains),
@@ -157,7 +167,12 @@ private struct RichReview: View {
     }
     private var pane: some View {
         Group {
-            if CommandLine.arguments.contains("--companion") {
+            if CommandLine.arguments.contains("--testbed-popover") {
+                VStack {
+                    CompanionView(model: companion, testbed: testbed)
+                    Spacer(minLength: 0)
+                }
+            } else if CommandLine.arguments.contains("--companion") {
                 VStack {
                     CompanionView(model: companion)
                     Spacer(minLength: 0)
@@ -178,6 +193,6 @@ private struct RichReview: View {
             }
         }
             .environment(\.appearsActive, true).environment(\.controlActiveState, .key)
-            .frame(width: 380, height: 680).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .frame(width: 340, height: 680).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
     }
 }

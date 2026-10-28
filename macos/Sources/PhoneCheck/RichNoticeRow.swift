@@ -76,7 +76,7 @@ struct RichNoticeRow: View {
                 }
             }
         }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .padding(presentation.expanded ? 12 : 10).frame(maxWidth: .infinity, alignment: .leading)
         .modifier(NotificationCard(canDismiss: notice.dismissible && !pending) { commands.dismiss(notice) })
         .accessibilityElement(children: .contain)
         .contextMenu {

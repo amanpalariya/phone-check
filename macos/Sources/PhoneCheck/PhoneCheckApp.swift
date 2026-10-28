@@ -7,19 +7,25 @@ import PhoneCheckCore
 struct PhoneCheckApp: App {
     @NSApplicationDelegateAdaptor(CompanionAppDelegate.self) private var delegate
     @StateObject private var model = Companion()
+    @StateObject private var testbed = NotificationTestbed()
 
     var body: some Scene {
         MenuBarExtra {
-            CompanionView(model: model)
+            CompanionView(model: model, testbed: testbed)
         } label: {
-            CompanionMenuLabel(model: model)
+            CompanionMenuLabel(model: model, testbed: testbed)
         }
         .menuBarExtraStyle(.window)
 
         // MenuBarExtra has no public programmatic-open API. Banner actions and
         // first-run setup use a standard window instead of inspecting private UI.
         Window("Phone Check", id: "phone-check") {
-            CompanionView(model: model)
+            CompanionView(model: model, testbed: testbed)
+        }
+        .windowResizability(.contentSize)
+
+        Window("Notification Testbed", id: "notification-testbed") {
+            NotificationTestbedView(model: testbed)
         }
         .windowResizability(.contentSize)
     }
@@ -27,13 +33,16 @@ struct PhoneCheckApp: App {
 
 private struct CompanionMenuLabel: View {
     @ObservedObject var model: Companion
+    @ObservedObject var testbed: NotificationTestbed
     @Environment(\.openWindow) private var openWindow
     var body: some View {
         HStack(spacing: 4) {
-            Image(systemName: "iphone")
-            if model.connected { Text("\(model.notificationCount)").monospacedDigit() }
+            Image(systemName: testbed.showsInPopover ? "testtube.2" : "iphone")
+            if testbed.showsInPopover {
+                Text("\(NotificationSection.count(testbed.notices))").monospacedDigit()
+            } else if model.connected { Text("\(model.notificationCount)").monospacedDigit() }
         }
-            .accessibilityLabel("Phone Check, \(model.status), \(model.notificationCount) notifications")
+            .accessibilityLabel(testbed.showsInPopover ? "Phone Check testbed, \(NotificationSection.count(testbed.notices)) notifications" : "Phone Check, \(model.status), \(model.notificationCount) notifications")
             .onReceive(NotificationCenter.default.publisher(for: .init("PhoneCheckShow"))) { _ in
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "phone-check")
@@ -55,15 +64,19 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
 
 struct CompanionView: View {
     @ObservedObject var model: Companion
+    @ObservedObject var testbed = NotificationTestbed()
+    @Environment(\.openWindow) private var openWindow
     var body: some View {
         VStack(spacing: 0) {
             header
-            if !model.paired {
+            if testbed.showsInPopover {
+                testbedContent
+            } else if !model.paired {
                 if model.pairing { pairing } else { welcome }
             } else {
                 pairedContent
             }
-            if let error = model.error {
+            if !testbed.showsInPopover, let error = model.error {
                 Label(error, systemImage: "exclamationmark.circle")
                     .font(.caption).foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -71,7 +84,7 @@ struct CompanionView: View {
                     .textSelection(.enabled)
             }
         }
-        .frame(width: 380)
+        .frame(width: 340)
         .tint(.accentColor)
         .onAppear { model.refreshAuthorization() }
         .confirmationDialog("Unpair phone?", isPresented: $model.confirmUnpair) {
@@ -80,9 +93,29 @@ struct CompanionView: View {
         }
     }
 
+    private var testbedContent: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text("Testbed").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("Exit") { testbed.showsInPopover = false }.buttonStyle(.borderless)
+            }.padding(.horizontal, 16)
+            if testbed.notices.isEmpty {
+                Text("Add samples in the testbed.").foregroundStyle(.secondary).padding(24)
+            } else {
+                NotificationFeed(notices: testbed.notices, commands: testbed.commands)
+            }
+        }.padding(.bottom, 10)
+    }
+
     private var header: some View {
         HStack(spacing: 8) {
             Menu {
+                Button("Notification testbed…") {
+                    NSApp.activate(ignoringOtherApps: true)
+                    openWindow(id: "notification-testbed")
+                }
+                Divider()
                 if model.paired {
                     Button("Notification settings", action: model.openNotificationSettings)
                     Divider()
@@ -101,13 +134,15 @@ struct CompanionView: View {
             Text("Phone Check").font(.headline)
             Spacer(minLength: 0)
             HStack(spacing: 6) {
-                if model.connected {
-                    Text("\(model.notificationCount)").font(.caption).monospacedDigit()
-                        .accessibilityLabel("\(model.notificationCount) notifications")
+                if testbed.showsInPopover || model.connected {
+                    let count = testbed.showsInPopover ? NotificationSection.count(testbed.notices) : model.notificationCount
+                    Text("\(count)").font(.caption).monospacedDigit()
+                        .accessibilityLabel("\(count) notifications")
                 }
-                Circle().fill(model.connected ? Color.green : Color.secondary)
+                Circle().fill(testbed.showsInPopover ? Color.orange : model.connected ? Color.green : Color.secondary)
                     .frame(width: 6, height: 6)
-                    .help(model.status).accessibilityLabel(model.status)
+                    .help(testbed.showsInPopover ? "Testbed" : model.status)
+                    .accessibilityLabel(testbed.showsInPopover ? "Testbed" : model.status)
             }.frame(minWidth: 28, minHeight: 28)
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)

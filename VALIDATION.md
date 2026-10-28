@@ -110,3 +110,26 @@ Additional device checks:
 - [ ] After provisioning Firebase, validate the role/expiry/size rules in its emulator and on the
   project, then repeat the existing pairing, permission, action, reply, dismissal and reconnect
   checks over Firebase, including session rotation, unpair/revocation cleanup and token refresh.
+
+## macOS notification testbed — October 28, 2026
+
+- Added an isolated window from the companion settings menu with 16 deterministic sample
+  types, shared production notification views, update/removal controls, simulated command
+  results, and a last-action receipt. Samples do not use pairing, transport, or native alerts.
+- Debug/release app builds and the visual review build passed. The testbed checks passed
+  for bounded PNG/JPEG decoding, repeated sample deduplication, summary counts, revision
+  changes, stale-command rejection, deferred confirmed dismissal, group removal, replies,
+  failures, non-dismissible items, and clearing an in-flight command before recreating a sample.
+- Rendered and inspected the populated testbed; scrolling/horizontal-overflow checks passed.
+  Installed the release build in `/Applications/Phone Check.app` and verified its signature.
+- Live UI automation could not connect to the installed app (AppleEvent timeout), so menu
+  navigation and clicking the installed controls were not verified. No paired-phone or native
+  system-alert tests were performed for this local preview feature.
+- Follow-up: added a shared testbed model and **Show in popover** toggle. The menu-bar
+  companion renders the same samples and simulated command controller, with a testbed count,
+  indicator, and **Exit** control; phone transport/state remain separate. Replaced generic
+  fixture icons with bounded 64-pixel PNGs from installed system apps and realistic fictional
+  content. Rebuilt debug/release and review apps, reran the testbed checks, and rendered and
+  visually inspected the companion preview in light/dark. Scrolling/overflow checks passed.
+  Opening the actual menu-bar popover was not automated; click the menu-bar icon after enabling
+  the toggle in the testbed.
