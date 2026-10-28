@@ -109,10 +109,10 @@ func runPaneChecks() {
     }
     surface.setContentHeight(120)
     surface.layoutSubtreeIfNeeded()
-    precondition(surface.backdrop.frame.height == 190, "A short list must not leave a panel-sized backdrop")
+    precondition(surface.backdrop.frame.height == 186, "A short list must not leave a panel-sized backdrop")
     surface.setContentHeight(300)
     surface.layoutSubtreeIfNeeded()
-    precondition(surface.backdrop.frame.height == 370, "Backdrop must follow visible content height")
+    precondition(surface.backdrop.frame.height == 366, "Backdrop must follow visible content height")
     NotificationAppearance.shared.usesSystemBackdrop = false
     settle()
     precondition(surface.backdrop.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,

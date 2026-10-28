@@ -296,3 +296,22 @@ Additional device checks:
   the user's on-screen comparison. The final radius-2 integrated pane remains subject to
   the user's visual preference; the setting allows immediate adjustment. No paired-phone
   actions were issued for this presentation change.
+
+
+## Menu-bar pointer and contained setup states — October 28, 2026
+
+- Added a small upward pointer as part of the top card's material outline, with its
+  horizontal position derived from the menu-bar button and constrained away from corners.
+- Moved pairing, disconnected/empty states, alert permission controls, and errors inside
+  the header card. Mirrored notifications retain their separate surfaces below it.
+- Debug, release, and isolated native review builds passed. Existing pane checks passed,
+  including geometry, blur bounds, scrolling, Escape, menu toggle, focus and reopening.
+  The light/dark setup fixture passed horizontal-overflow/layout checks; its cached image
+  confirmed containment and pointer geometry but showed glass-rendering artifacts, so it
+  does not verify live material appearance. No paired-phone actions were exercised.
+
+- Follow-up: softened the pointer to match the supplied Blip reference, using a 40-point
+  base and a rounded 12-point rise. Cubic curves meet the card and crest with horizontal
+  tangents. Release build and diff whitespace check passed; live visual review pending.
+- Raised the pane content by 4 points (top inset 6 → 2) at the user's request.
+  Release/review builds and native pane checks passed with updated backdrop bounds.

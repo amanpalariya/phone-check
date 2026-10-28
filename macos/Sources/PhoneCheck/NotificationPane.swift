@@ -89,10 +89,10 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         panel.setFrame(frame, display: false)
         // Reuse the hosting tree when reopening so expanded rows and reply drafts survive.
         if let surface = panel.contentView as? NotificationPaneSurface {
-            surface.host.rootView = root(height: frame.height)
+            surface.host.rootView = root(height: frame.height, pointerOffset: (anchor?.midX ?? frame.midX) - frame.midX)
         } else {
             panel.contentView = NotificationPaneSurface(frame: NSRect(origin: .zero, size: frame.size),
-                                                       root: root(height: frame.height))
+                                                       root: root(height: frame.height, pointerOffset: (anchor?.midX ?? frame.midX) - frame.midX))
         }
         panel.makeKeyAndOrderFront(nil)
         // Start with no search focus; Tab and clicking still enter native editors.
@@ -100,8 +100,9 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         installMonitors()
     }
 
-    private func root(height: CGFloat) -> AnyView {
+    private func root(height: CGFloat, pointerOffset: CGFloat) -> AnyView {
         AnyView(CompanionView(model: model, testbed: testbed, showTestbed: { [weak self] in self?.showTestbed() },
+                              pointerOffset: pointerOffset,
                               feedMaximumHeight: max(60, height - 220),
                               contentHeightChanged: { [weak self] height in
                                   (self?.panel?.contentView as? NotificationPaneSurface)?.setContentHeight(height)
@@ -164,7 +165,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 
 /// Screen coordinates include negative origins on secondary displays.
 enum NotificationPaneLayout {
-    static let contentTopInset: CGFloat = 6
+    static let contentTopInset: CGFloat = 2
     static func frame(in visibleFrame: NSRect, anchor: NSRect?) -> NSRect {
         // Before AppKit lays out the status item, its window can still be at (0, 0).
         // Ignore that provisional rectangle rather than creating a zero-height panel.

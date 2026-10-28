@@ -144,11 +144,56 @@ private struct TrackpadDismissal: NSViewRepresentable {
 
 /// Shared surface for notification cards and the compact pane controls.
 struct NotificationSurface: View {
+    var pointerOffset: CGFloat? = nil
+
     var body: some View {
-        if #available(macOS 26.0, *) {
+        if let pointerOffset {
+            let shape = NotificationPointerShape(offset: pointerOffset)
+            if #available(macOS 26.0, *) {
+                Color.clear.glassEffect(.regular, in: shape)
+            } else {
+                shape.fill(.regularMaterial)
+            }
+        } else if #available(macOS 26.0, *) {
             Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         } else {
             RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.regularMaterial)
         }
+    }
+}
+
+/// A single outline keeps the pointer and card in the same material surface.
+struct NotificationPointerShape: Shape {
+    static let height: CGFloat = 12
+    var offset: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let top = rect.minY + Self.height
+        let radius: CGFloat = min(20, rect.width / 4, (rect.height - Self.height) / 2)
+        let center = min(max(rect.midX + offset, rect.minX + radius + 20), rect.maxX - radius - 20)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + radius, y: top))
+        // Horizontal tangents at the shoulders and crest avoid a sharp notch.
+        path.addLine(to: CGPoint(x: center - 20, y: top))
+        path.addCurve(to: CGPoint(x: center, y: rect.minY),
+                      control1: CGPoint(x: center - 10, y: top),
+                      control2: CGPoint(x: center - 7, y: rect.minY))
+        path.addCurve(to: CGPoint(x: center + 20, y: top),
+                      control1: CGPoint(x: center + 7, y: rect.minY),
+                      control2: CGPoint(x: center + 10, y: top))
+        path.addLine(to: CGPoint(x: rect.maxX - radius, y: top))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: top + radius),
+                          control: CGPoint(x: rect.maxX, y: top))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - radius))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX - radius, y: rect.maxY),
+                          control: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + radius, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY - radius),
+                          control: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: top + radius))
+        path.addQuadCurve(to: CGPoint(x: rect.minX + radius, y: top),
+                          control: CGPoint(x: rect.minX, y: top))
+        path.closeSubpath()
+        return path
     }
 }

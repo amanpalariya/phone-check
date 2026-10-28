@@ -36,25 +36,19 @@ struct CompanionView: View {
     @ObservedObject var model: Companion
     @ObservedObject var testbed = NotificationTestbed()
     var showTestbed: () -> Void = {}
+    var pointerOffset: CGFloat = 0
     var feedMaximumHeight: CGFloat = 480
     var contentHeightChanged: (CGFloat) -> Void = { _ in }
     @StateObject private var presentation = CompanionPresentation()
     var body: some View {
         VStack(spacing: 0) {
             controlsCard
-            if testbed.showsInPane {
+            if testbed.showsInPane && !testbed.notices.isEmpty {
                 testbedContent
-            } else if !model.paired {
-                if model.pairing { pairing } else { welcome }
-            } else {
-                pairedContent
-            }
-            if !testbed.showsInPane, let error = model.error {
-                Label(error, systemImage: "exclamationmark.circle")
-                    .font(.caption).foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20).padding(.bottom, 18)
-                    .textSelection(.enabled)
+            } else if !testbed.showsInPane && model.paired && model.connected && !model.notices.isEmpty {
+                NotificationFeed(notices: model.notices, commands: model.commands, maximumHeight: feedMaximumHeight,
+                                 search: $presentation.query, showsSearch: false)
+                    .padding(.bottom, 10)
             }
         }
         .frame(width: 340)
@@ -88,8 +82,27 @@ struct CompanionView: View {
                 NotificationSearchField(text: $presentation.query)
                     .padding(.horizontal, 12).padding(.bottom, 12)
             }
+            if testbed.showsInPane {
+                if testbed.notices.isEmpty {
+                    Text("Add samples in the testbed.").foregroundStyle(.secondary).padding(24)
+                }
+            } else {
+                if !model.paired {
+                    if model.pairing { pairing } else { welcome }
+                } else {
+                    pairedContent
+                }
+                if let error = model.error {
+                    Label(error, systemImage: "exclamationmark.circle")
+                        .font(.caption).foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20).padding(.bottom, 18)
+                        .textSelection(.enabled)
+                }
+            }
         }
-        .background { NotificationSurface() }
+        .padding(.top, NotificationPointerShape.height)
+        .background { NotificationSurface(pointerOffset: pointerOffset) }
         .padding(.horizontal, 10)
     }
 
@@ -99,14 +112,9 @@ struct CompanionView: View {
     }
 
     private var testbedContent: some View {
-        VStack(spacing: 8) {
-            if testbed.notices.isEmpty {
-                Text("Add samples in the testbed.").foregroundStyle(.secondary).padding(24)
-            } else {
-                NotificationFeed(notices: testbed.notices, commands: testbed.commands, maximumHeight: feedMaximumHeight,
-                                 search: $presentation.query, showsSearch: false)
-            }
-        }.padding(.bottom, 10)
+        NotificationFeed(notices: testbed.notices, commands: testbed.commands, maximumHeight: feedMaximumHeight,
+                         search: $presentation.query, showsSearch: false)
+            .padding(.bottom, 10)
     }
 
     private var header: some View {
@@ -217,11 +225,7 @@ struct CompanionView: View {
                 .padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                 .padding(.horizontal, 16).padding(.bottom, 8)
             }
-            if model.connected && !model.notices.isEmpty {
-                NotificationFeed(notices: model.notices, commands: model.commands, maximumHeight: feedMaximumHeight,
-                                 search: $presentation.query, showsSearch: false)
-                    .padding(.bottom, 10)
-            } else {
+            if !model.connected || model.notices.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: model.connected ? "bell" : "wifi")
                         .font(.system(size: 26, weight: .light)).foregroundStyle(.tertiary)
