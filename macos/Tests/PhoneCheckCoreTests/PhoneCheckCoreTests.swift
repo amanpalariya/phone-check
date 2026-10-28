@@ -12,11 +12,35 @@ struct PhoneCheckCoreTests {
         try tests.testCipherRejectsReplayReorderTamperingAndWrongDirection()
         try tests.testFrameLimitsAndJSONRoundTrip()
         try tests.testRichAndLegacyNoticeDecoding()
-        print("7 core checks passed")
+        try tests.testNotificationGroupsPreserveMembersAndAppBoundaries()
+        print("8 core checks passed")
         try FirebaseChecks.run()
     }
     private func notice(_ revision: String = "one", key: String = "k") -> Notice {
         Notice(key: key, app: "Mail", title: "Subject", body: "Text", revision: revision, dismissible: true, postedAt: 1)
+    }
+    func testNotificationGroupsPreserveMembersAndAppBoundaries() throws {
+        var first = notice(key: "first"); first.groupKey = "inbox"
+        var second = first; second.key = "second"
+        var summary = first; summary.key = "summary"; summary.groupSummary = true
+        var otherApp = first; otherApp.key = "other"; otherApp.app = "Chat"
+        let ungrouped = notice(key: "ungrouped")
+        let sections = NotificationSection.sections([first, ungrouped, summary, second, otherApp])
+        try check(sections.count == 3)
+        try check(sections[0].notice.key == first.key)
+        try check(sections[0].summary?.key == summary.key)
+        try check(sections[0].children.map(\.key) == ["first", "second"])
+        try check(sections[1].notice.key == "ungrouped" && sections[1].children.isEmpty)
+        try check(sections[2].notice.key == "other" && sections[2].children.isEmpty)
+        let orphan = NotificationSection.sections([first, second])
+        try check(orphan.count == 1 && orphan[0].children.count == 2)
+        try check(orphan[0].id == sections[0].id)
+        let single = NotificationSection.sections([second])
+        try check(single.count == 1 && single[0].notice.key == "second" && single[0].children.isEmpty)
+        let loneSummary = NotificationSection.sections([summary])
+        try check(loneSummary.count == 1 && loneSummary[0].notice.key == "summary")
+        let empty = NotificationSection.sections([])
+        try check(empty.isEmpty)
     }
     func testSnapshotDoesNotReplayAndUpdatesDeduplicate() throws {
         var state = ActiveState()

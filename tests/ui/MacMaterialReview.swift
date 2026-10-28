@@ -14,6 +14,36 @@ struct MaterialReview {
         window.contentView = NSHostingView(rootView: Group {
             if CommandLine.arguments.contains("--setup") { Review() } else { RichReview() }
         })
+        if let flag = CommandLine.arguments.firstIndex(of: "--render"), CommandLine.arguments.count > flag + 1 {
+            window.setContentSize(NSSize(width: 840, height: 740))
+            window.contentView?.layoutSubtreeIfNeeded()
+            // Render this fixture's view hierarchy, without capturing the desktop.
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            func verifyScrollLayout(_ view: NSView) {
+                if let scroll = view as? NSScrollView {
+                    let width = scroll.contentView.bounds.width
+                    scroll.scrollerStyle = .legacy
+                    scroll.layoutSubtreeIfNeeded()
+                    precondition(scroll.scrollerStyle == .overlay, "Preference changes must preserve overlay scrolling")
+                    precondition(abs(scroll.contentView.bounds.width - width) < 1, "Scrollbar must not reflow content")
+                    precondition(abs(width - scroll.bounds.width) < 1, "Scrollbar must not consume a column")
+                    precondition(abs((scroll.documentView?.frame.width ?? 0) - width) < 1, "No horizontal overflow")
+                    if CommandLine.arguments.contains("--bottom"), let document = scroll.documentView {
+                        document.scroll(NSPoint(x: 0, y: max(0, document.frame.height - scroll.contentView.bounds.height)))
+                    }
+                }
+                for child in view.subviews { verifyScrollLayout(child) }
+            }
+            if let view = window.contentView { verifyScrollLayout(view) }
+            print("Overlay, stable-width and horizontal-overflow layout checks passed")
+            window.contentView?.layoutSubtreeIfNeeded()
+            if let view = window.contentView,
+               let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+                view.cacheDisplay(in: view.bounds, to: bitmap)
+                try! bitmap.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[flag + 1]))
+            }
+            return
+        }
         if let screen = NSScreen.main { window.setFrame(screen.visibleFrame, display: true) }
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
@@ -30,11 +60,11 @@ private struct Review: View {
                 HStack(spacing: 28) {
                     VStack(spacing: 14) {
                         Text("Regular · Light").font(.headline).foregroundStyle(.white)
-                        MenuSurface(model: model).environment(\.colorScheme, .light)
+                        CompanionView(model: model).environment(\.colorScheme, .light)
                     }
                     VStack(spacing: 14) {
                         Text("Regular · Dark").font(.headline).foregroundStyle(.white)
-                        MenuSurface(model: model).environment(\.colorScheme, .dark)
+                        CompanionView(model: model).environment(\.colorScheme, .dark)
                     }
                 }.padding(36)
             }.frame(minWidth: 820, maxWidth: .infinity, minHeight: 470, maxHeight: .infinity)
@@ -48,16 +78,84 @@ private struct RichReview: View {
     @StateObject private var commands = NotificationCommandController(current: { _ in nil }, connected: { false }, send: { _ in })
     private let notices: [Notice] = {
         let json = #"[{"key":"chat","app":"Messages","title":"Weekend plans","body":"","revision":"1","dismissible":true,"postedAt":1,"kind":"messaging","messages":[{"sender":"Alex","text":"Coffee at 10?","time":1793075400000,"attachment":false},{"sender":"Sam","text":"See you there.","time":1793075460000,"attachment":false}],"actions":[{"id":"reply","title":"Reply","input":true,"freeform":true,"choices":["Yes","Later"],"enabled":true,"requiresUnlock":false,"destructive":false}],"openable":true},{"key":"progress","app":"Downloads","title":"Downloading update","body":"System update","revision":"2","dismissible":false,"postedAt":2,"kind":"progress","ongoing":true,"progress":{"value":75,"max":100,"indeterminate":false}},{"key":"media","app":"Music","title":"Morning playlist","body":"Sample artist","revision":"3","dismissible":true,"postedAt":3,"kind":"media","actions":[{"id":"pause","title":"Pause","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false},{"id":"next","title":"Next","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}]}]"#
-        return try! JSONDecoder().decode([Notice].self, from: Data(json.utf8))
+        var result = try! JSONDecoder().decode([Notice].self, from: Data(json.utf8))
+        let call = #"{"key":"call","app":"Phone","title":"Alex Morgan","body":"Incoming call","revision":"1","dismissible":false,"postedAt":4,"kind":"call","actions":[{"id":"decline","title":"Decline","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":true},{"id":"answer","title":"Answer","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}]}"#
+        result.insert(try! JSONDecoder().decode(Notice.self, from: Data(call.utf8)), at: 0)
+        // Deterministic artwork exercises the same bounded JPEG decoder as the phone.
+        let art = NSImage(size: NSSize(width: 160, height: 160), flipped: false) { rect in
+            NSGradient(starting: .systemIndigo, ending: .systemOrange)!.draw(in: rect, angle: 45)
+            NSColor.white.withAlphaComponent(0.4).setFill()
+            NSBezierPath(ovalIn: NSRect(x: 44, y: 44, width: 72, height: 72)).fill()
+            return true
+        }
+        let jpeg = NSBitmapImageRep(data: art.tiffRepresentation!)!.representation(using: .jpeg, properties: [.compressionFactor: 0.7])!
+        result[result.count - 1].image = jpeg.base64EncodedString()
+        var groupSummary = result[1]
+        groupSummary.key = "inbox-summary"; groupSummary.app = "Mail"; groupSummary.title = "2 new messages"
+        groupSummary.groupKey = "inbox"; groupSummary.groupSummary = true
+        groupSummary.actions = []; groupSummary.messages = nil; groupSummary.openable = false
+        result.append(groupSummary)
+        for (index, sender) in ["Jordan Lee", "Design team"].enumerated() {
+            var child = groupSummary
+            child.key = "inbox-\(index)"; child.groupSummary = false
+            child.actions = result[1].actions
+            child.title = sender; child.body = index == 0 ? "The updated sketches are ready to review." : "Friday's catch-up is at 3."
+            result.append(child)
+        }
+        if CommandLine.arguments.contains("--stress") {
+            var long = result[1]
+            long.key = "long"; long.app = "A very long application name"; long.title = "A long notification title that needs room to wrap without pushing its controls out of reach"
+            long.messages = nil
+            long.body = "First line\nSecond line\nThird line\nFourth line\n" + String(repeating: "Long notification content. ", count: 30)
+            result.insert(long, at: 0)
+            var disabled = result[0]
+            disabled.key = "disabled"; disabled.title = "Action available on phone"
+            disabled.body = "This notification needs an attachment."
+            if disabled.actions?.isEmpty == false { disabled.actions![0].enabled = false }
+            result.append(disabled)
+            var summary = result[1]
+            summary.key = "summary"; summary.app = "Mail"; summary.title = "2 new messages"
+            summary.groupKey = "mail"; summary.groupSummary = true; summary.actions = []
+            result.append(summary)
+            for index in 1...2 {
+                var child = summary
+                child.key = "mail-\(index)"; child.groupSummary = false; child.title = "Message \(index)"
+                child.body = "A grouped message preview."; result.append(child)
+            }
+        }
+        return result
     }()
     var body: some View {
         HStack(spacing: 24) {
             pane.environment(\.colorScheme, .light)
             pane.environment(\.colorScheme, .dark)
         }.padding(24).background(LinearGradient(colors: [.blue, .cyan, .orange], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .onAppear {
+                let key = CommandLine.arguments.contains("--group-reply") ? "inbox-0" : "chat"
+                if CommandLine.arguments.contains("--reply") || CommandLine.arguments.contains("--group-reply"),
+                   let notice = notices.first(where: { $0.key == key }), let action = notice.actions?.first {
+                    commands.beginReply(notice, action: action)
+                }
+            }
     }
     private var pane: some View {
-        ScrollView { NotificationList(notices: notices, commands: commands) }
-            .frame(width: 360, height: 650).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+        Group {
+            if CommandLine.arguments.contains("--expanded") {
+                OverlayNotificationScroll {
+                    VStack(spacing: 8) {
+                        ForEach(notices.filter { $0.groupKey == nil }) {
+                            RichNoticeRow(notice: $0, commands: commands, initiallyExpanded: true)
+                        }
+                    }.padding(10)
+                }
+            } else {
+                VStack {
+                    NotificationFeed(notices: notices, commands: commands)
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+            .environment(\.appearsActive, true).environment(\.controlActiveState, .key)
+            .frame(width: 380, height: 680).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
     }
 }

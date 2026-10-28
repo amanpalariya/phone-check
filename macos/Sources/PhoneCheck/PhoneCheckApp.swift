@@ -4,47 +4,48 @@ import PhoneCheckCore
 
 #if !PHONECHECK_VISUAL_TEST
 @main
-struct PhoneCheckApp {
-    static func main() {
-        let app = NSApplication.shared
-        let delegate = CompanionAppDelegate()
-        app.delegate = delegate
-        app.setActivationPolicy(.accessory)
-        withExtendedLifetime(delegate) { app.run() }
+struct PhoneCheckApp: App {
+    @NSApplicationDelegateAdaptor(CompanionAppDelegate.self) private var delegate
+    @StateObject private var model = Companion()
+
+    var body: some Scene {
+        MenuBarExtra {
+            CompanionView(model: model)
+        } label: {
+            CompanionMenuLabel(model: model)
+        }
+        .menuBarExtraStyle(.window)
+
+        // MenuBarExtra has no public programmatic-open API. Banner actions and
+        // first-run setup use a standard window instead of inspecting private UI.
+        Window("Phone Check", id: "phone-check") {
+            CompanionView(model: model)
+        }
+        .windowResizability(.contentSize)
     }
 }
 
+private struct CompanionMenuLabel: View {
+    @ObservedObject var model: Companion
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Image(systemName: "iphone")
+            .accessibilityLabel("Phone Check")
+            .onReceive(NotificationCenter.default.publisher(for: .init("PhoneCheckShow"))) { _ in
+                NSApp.activate(ignoringOtherApps: true)
+                openWindow(id: "phone-check")
+            }
+            .onAppear {
+                if !model.paired { openWindow(id: "phone-check") }
+            }
+    }
+}
 #endif
 
 final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
-    private var statusItem: NSStatusItem!
-    private var presentation: MenuBarPresentation?
-    private var model: Companion!
-    private var showObserver: NSObjectProtocol?
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        model = Companion()
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Phone Check")
-            button.image?.isTemplate = true
-            button.toolTip = "Phone Check"
-            button.target = self
-            button.action = #selector(togglePopover)
-        }
-        if let button = statusItem.button { presentation = MenuBarPresentation(model: model, anchor: button) }
-        showObserver = NotificationCenter.default.addObserver(forName: .init("PhoneCheckShow"), object: nil, queue: .main) { [weak self] _ in self?.showPopover() }
-        if !model.paired { DispatchQueue.main.async { self.showPopover() } }
-    }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showPopover()
+        NotificationCenter.default.post(name: .init("PhoneCheckShow"), object: nil)
         return false
-    }
-    @objc private func togglePopover() {
-        if presentation?.isShown == true { presentation?.close() } else { showPopover() }
-    }
-    private func showPopover() {
-        presentation?.show()
     }
 }
 
@@ -76,7 +77,7 @@ struct CompanionView: View {
                     .textSelection(.enabled)
             }
         }
-        .frame(width: 336)
+        .frame(width: 380)
         .tint(Palette.controlAccent)
         .onAppear { model.refreshAuthorization() }
         .confirmationDialog("Unpair phone?", isPresented: $model.confirmUnpair) {
@@ -189,10 +190,8 @@ struct CompanionView: View {
                 .padding(.horizontal, 16).padding(.bottom, 8)
             }
             if model.connected && !model.notices.isEmpty {
-                ScrollView {
-                    NotificationList(notices: model.notices, commands: model.commands)
-                        .padding(.horizontal, 8)
-                }.frame(maxHeight: 380).padding(.bottom, 10)
+                NotificationFeed(notices: model.notices, commands: model.commands)
+                    .padding(.bottom, 10)
             } else {
                 VStack(spacing: 10) {
                     Image(systemName: model.connected ? "bell" : "wifi")

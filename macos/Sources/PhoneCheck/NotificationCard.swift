@@ -30,28 +30,28 @@ struct NotificationCard: ViewModifier {
                     .focused($closeFocused)
                     .accessibilityLabel("Dismiss on phone")
                     .help("Dismiss on phone")
-                    .opacity(presentation.hovering || closeFocused ? 1 : 0)
+                    .opacity(presentation.hovering || closeFocused ? 1 : 0.65)
                     .padding(8)
                 }
             }
             .offset(x: reduceMotion ? 0 : presentation.translation)
+            .background(alignment: presentation.translation < 0 ? .trailing : .leading) {
+                if canDismiss && abs(presentation.translation) > 6 && !reduceMotion {
+                    Label("Dismiss on phone", systemImage: "xmark")
+                        .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                        .opacity(min(1, Double(abs(presentation.translation) / threshold)))
+                }
+            }
             .background {
                 TrackpadDismissal(enabled: canDismiss, changed: { presentation.translation = $0 }, ended: finishSwipe)
             }
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .onHover { presentation.hovering = $0 }
-            .highPriorityGesture(
-                DragGesture(minimumDistance: 16)
-                    .onChanged { value in
-                        guard canDismiss, abs(value.translation.width) > abs(value.translation.height) * 1.5 else { return }
-                        presentation.translation = max(-120, min(120, value.translation.width))
-                    }
-                    .onEnded { value in
-                        let horizontal = abs(value.translation.width) > abs(value.translation.height) * 1.5
-                        finishSwipe(horizontal ? value.translation.width : 0)
-                    }
-            )
             .onChange(of: canDismiss) { _, _ in presentation.translation = 0 }
+            .accessibilityActions {
+                if canDismiss { Button("Dismiss on phone", action: dismiss) }
+            }
     }
 
     private func finishSwipe(_ distance: CGFloat) {
