@@ -89,22 +89,14 @@ func runPaneChecks() {
     precondition(panel.isVisible && !panel.isOpaque && !panel.hasShadow)
     precondition(panel.styleMask.contains(.nonactivatingPanel) && !panel.styleMask.contains(.titled))
     let surface = panel.contentView as! NotificationPaneSurface
-    if #available(macOS 26.0, *) {
-        let glass = surface.backdrop as! NSGlassEffectView
-        precondition(glass.style == .regular && glass.cornerRadius == 0 && glass.layer?.mask != nil)
-    } else {
-        let blur = surface.backdrop as! NSVisualEffectView
-        precondition(blur.blendingMode == .behindWindow && blur.maskImage != nil)
-    }
+    precondition(surface.backdrop.material == .underWindowBackground)
+    precondition(surface.backdrop.blendingMode == .behindWindow && surface.backdrop.maskImage != nil)
     let originalAppearance = surface.appearance
     for system in [NSAppearance.Name.aqua, .darkAqua] {
         surface.appearance = NSAppearance(named: system)
         settle()
         precondition(surface.backdrop.appearance == nil && surface.backdrop.alphaValue == 1,
                      "System backdrop must inherit its appearance and preserve native opacity")
-        if #available(macOS 26.0, *), let glass = surface.backdrop as? NSGlassEffectView {
-            precondition(glass.style == .regular && glass.tintColor == nil)
-        }
     }
     NotificationAppearance.shared.usesSystemBackdrop = false
     settle()

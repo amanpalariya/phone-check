@@ -267,7 +267,8 @@ private func runBlurReview() {
         }
     }
     samples.contentView = content
-    backdrop.addChildWindow(samples, ordered: .above)
+    // Keep separate window groups so behind-window materials can sample the pattern.
+    samples.level = .floating
     samples.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
     withExtendedLifetime((backdrop, samples)) { NSApp.run() }

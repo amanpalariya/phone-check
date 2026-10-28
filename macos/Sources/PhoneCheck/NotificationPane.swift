@@ -196,31 +196,20 @@ final class NotificationPanel: NSPanel {
 /// border, title bar or window shadow. Each notification supplies its own surface.
 final class NotificationPaneSurface: NSView {
     let host: NSHostingView<AnyView>
-    let backdrop: NSView
-    private let feather = CALayer()
+    let backdrop = NSVisualEffectView()
     private var appearanceSubscription: AnyCancellable?
     private var accessibilitySubscription: AnyCancellable?
     override var acceptsFirstResponder: Bool { true }
 
     init(frame: NSRect, root: AnyView) {
         host = NSHostingView(rootView: root)
-        if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView()
-            glass.style = .clear
-            glass.cornerRadius = 0
-            backdrop = glass
-        } else {
-            let material = NSVisualEffectView()
-            material.material = .popover
-            material.blendingMode = .behindWindow
-            material.state = .active
-            backdrop = material
-        }
+        backdrop.material = .underWindowBackground
+        backdrop.blendingMode = .behindWindow
+        backdrop.state = .active
         super.init(frame: frame)
         backdrop.autoresizingMask = [.width, .height]
         backdrop.frame = bounds
-        // Feather the actual backdrop, including its tint and edge highlights.
-        // A standalone gradient over the window would only fade a colored sheet.
+        // Mask the native material itself, rather than overlaying a gradient fill.
         let mask = NSImage(size: NSSize(width: 128, height: 128), flipped: false) { rect in
             NSGradient(colorsAndLocations: (NSColor.clear, 0), (NSColor.black, 0.08),
                        (NSColor.black, 0.92), (NSColor.clear, 1))!.draw(in: rect, angle: 0)
@@ -232,14 +221,7 @@ final class NotificationPaneSurface: NSView {
             vertical.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
             return true
         }
-        if let material = backdrop as? NSVisualEffectView {
-            material.maskImage = mask
-        } else {
-            backdrop.wantsLayer = true
-            feather.contents = mask.cgImage(forProposedRect: nil, context: nil, hints: nil)
-            feather.frame = backdrop.bounds
-            backdrop.layer?.mask = feather
-        }
+        backdrop.maskImage = mask
         addSubview(backdrop)
         host.sizingOptions = []
         host.frame = bounds
@@ -268,31 +250,16 @@ final class NotificationPaneSurface: NSView {
         if system {
             // Let AppKit adapt the material to the actual background and appearance.
             backdrop.appearance = nil
-            if #available(macOS 26.0, *), let glass = backdrop as? NSGlassEffectView {
-                glass.style = .regular
-                glass.tintColor = nil
-            }
             return
         }
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         // Invert only the backdrop. Cards and controls retain the system appearance.
         backdrop.appearance = NSAppearance(named: dark ? .aqua : .darkAqua)
-        if #available(macOS 26.0, *), let glass = backdrop as? NSGlassEffectView {
-            glass.style = .clear
-            glass.tintColor = (dark ? NSColor.white : NSColor.black).withAlphaComponent(0.18)
-        }
     }
 
     private func updateTransparency(_ value: Double, system: Bool = NotificationAppearance.shared.usesSystemBackdrop) {
         backdrop.alphaValue = system || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 1 - value
     }
 
-    override func layout() {
-        super.layout()
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        feather.frame = backdrop.bounds
-        CATransaction.commit()
-    }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }

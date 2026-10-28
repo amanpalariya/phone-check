@@ -223,3 +223,18 @@ Additional device checks:
   tool and system menu-bar app access timed out. No exact visual-match claim is made.
   Attempts to inspect the new settings selector encountered stale/user-changed UI state;
   the mode-switch behavior above was exercised by the native harness, not a live click test.
+
+## Separate backdrop material from card glass — October 28, 2026
+
+- Corrected the surrounding pane to use NSVisualEffectView with underWindowBackground,
+  behindWindow blending and active state on all supported macOS versions. Removed the
+  surrounding NSGlassEffectView and glass-specific tint/style logic. Notification cards
+  retain their independent Liquid Glass surfaces. System/Custom appearance preferences,
+  opposite-tone custom mode, saved transparency and accessibility behavior remain available.
+- Debug, review and release builds and native pane checks passed. Checks now require the
+  standard backdrop material and behind-window blending, plus System/Custom appearance
+  behavior. Updated the installed app and verified its signature.
+- Separated the review windows into independent groups for behind-window sampling. The
+  tool's window screenshot did not include the separate patterned background and showed
+  a uniform material, so it did not establish live desktop blur quality. This is an API-role
+  correction, not a verified match to Notification Center's compositor effect.
