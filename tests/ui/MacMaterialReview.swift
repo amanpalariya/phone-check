@@ -7,6 +7,14 @@ import PhoneCheckCore
 struct MaterialReview {
     static func main() {
         let app = NSApplication.shared
+        if CommandLine.arguments.contains("--search-motion-checks") {
+            runSearchMotionChecks()
+            return
+        }
+        if CommandLine.arguments.contains("--motion-checks") {
+            runMotionChecks()
+            return
+        }
         if CommandLine.arguments.contains("--testbed-checks") {
             runTestbedChecks()
             return

@@ -11,9 +11,17 @@ struct RichNoticeRow: View {
     @ObservedObject var commands: NotificationCommandController
     let summary: Notice?
     @StateObject private var presentation: RowPresentation
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let expansion: Binding<Bool>?
+    private var expanded: Bool {
+        get { expansion?.wrappedValue ?? presentation.expanded }
+        nonmutating set {
+            if let expansion { expansion.wrappedValue = newValue }
+            else { presentation.expanded = newValue }
+        }
+    }
 
-    init(notice: Notice, commands: NotificationCommandController, initiallyExpanded: Bool = false, summary: Notice? = nil) {
+    init(notice: Notice, commands: NotificationCommandController, initiallyExpanded: Bool = false, summary: Notice? = nil, expansion: Binding<Bool>? = nil) {
+        self.expansion = expansion
         self.notice = notice
         self.commands = commands
         self.summary = summary
@@ -24,11 +32,11 @@ struct RichNoticeRow: View {
     private var immediateControls: Bool { notice.kind == "media" || notice.kind == "call" }
     private var replying: Bool { commands.replyTarget?.key == notice.key }
     private var showsFooter: Bool {
-        presentation.expanded && !immediateControls && !replying && (!actions.isEmpty || notice.openable == true)
+        expanded && !immediateControls && !replying && (!actions.isEmpty || notice.openable == true)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if presentation.expanded {
+            if expanded {
                 header
                 VStack(alignment: .leading, spacing: 3) {
                     if !notice.title.isEmpty {
@@ -43,7 +51,7 @@ struct RichNoticeRow: View {
                     expansionButton
                 }
             }
-            if presentation.expanded, let image = NoticeImage.image(notice) {
+            if expanded, let image = NoticeImage.image(notice) {
                 Image(nsImage: image).resizable().scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: 220)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -78,7 +86,7 @@ struct RichNoticeRow: View {
                 Text(feedback).font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if presentation.expanded && !immediateControls && !replying {
+            if expanded && !immediateControls && !replying {
                 if !actions.isEmpty {
                     NotificationActionFooter(actions: actions, pending: pending, perform: performAction)
                 } else if notice.openable == true {
@@ -87,11 +95,16 @@ struct RichNoticeRow: View {
                 }
             }
         }
-        .padding(.horizontal, presentation.expanded ? 12 : 10)
-        .padding(.top, presentation.expanded ? 12 : 10)
-        .padding(.bottom, showsFooter ? 4 : presentation.expanded ? 12 : 10)
+        .padding(.horizontal, expanded ? 12 : 10)
+        .padding(.top, expanded ? 12 : 10)
+        .padding(.bottom, showsFooter ? 4 : expanded ? 12 : 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(NotificationCard(canDismiss: notice.dismissible && !pending) { commands.dismiss(notice) })
+        .geometryGroup()
+        .notificationMotion(value: expanded)
+        .notificationMotion(value: notice)
+        .notificationMotion(value: commands.replyTarget)
+        .notificationMotion(value: commands.feedback)
         .accessibilityElement(children: .contain)
         .contextMenu {
             if notice.openable == true {
@@ -103,9 +116,9 @@ struct RichNoticeRow: View {
             }
         }
         .onChange(of: commands.replyTarget) { _, target in
-            if target?.key == notice.key { presentation.expanded = true }
+            if target?.key == notice.key { expanded = true }
         }
-        .onAppear { if replying { presentation.expanded = true } }
+        .onAppear { if replying { expanded = true } }
     }
     private var header: some View {
         HStack(spacing: 7) {
@@ -125,7 +138,7 @@ struct RichNoticeRow: View {
     }
     @ViewBuilder private var content: some View {
         if let messages = notice.messages, !messages.isEmpty {
-            if presentation.expanded {
+            if expanded {
                 ForEach(Array(messages.enumerated()), id: \.offset) { _, message in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack {
@@ -143,7 +156,7 @@ struct RichNoticeRow: View {
                                   expanded: false, limit: 2)
             }
         } else if let lines = notice.lines, !lines.isEmpty {
-            if presentation.expanded {
+            if expanded {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                     NoticePreviewText(text: line, expanded: true, limit: 2)
                 }
@@ -151,12 +164,12 @@ struct RichNoticeRow: View {
                 NoticePreviewText(text: lines[0], expanded: false, limit: 2)
             }
         } else if !notice.body.isEmpty {
-            NoticePreviewText(text: notice.body, expanded: presentation.expanded, limit: 2)
+            NoticePreviewText(text: notice.body, expanded: expanded, limit: 2)
         }
     }
     private var expansionButton: some View {
-        NotificationChevron(expanded: presentation.expanded, subject: "notification") {
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { presentation.expanded.toggle() }
+        NotificationChevron(expanded: expanded, subject: "notification") {
+            expanded.toggle()
         }
     }
     private var actionButtons: some View {

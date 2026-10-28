@@ -64,7 +64,8 @@ struct NotificationChevron: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+            Image(systemName: "chevron.down")
+                .rotationEffect(.degrees(expanded ? 180 : 0))
                 .font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                 .frame(width: 24, height: 24).contentShape(Rectangle())
         }

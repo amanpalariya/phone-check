@@ -6,24 +6,69 @@ import PhoneCheckCore
 struct NotificationList: View {
     let notices: [Notice]
     @ObservedObject var commands: NotificationCommandController
+    var activeNotices: [Notice]? = nil
+    @StateObject private var expansion = NotificationExpansionState()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(notices: [Notice], commands: NotificationCommandController, activeNotices: [Notice]? = nil,
+         expansion: NotificationExpansionState = NotificationExpansionState()) {
+        self.notices = notices
+        self.commands = commands
+        self.activeNotices = activeNotices
+        _expansion = StateObject(wrappedValue: expansion)
+    }
+
+    // A single sibling collection keeps child identity stable when a group loses
+    // its summary, gains members, reorders, or becomes a single notification.
+    private struct Item: Identifiable {
+        let id: String
+        let section: NotificationSection
+        var child: Notice? = nil
+    }
+    private var items: [Item] {
+        NotificationSection.sections(notices).flatMap { section -> [Item] in
+            guard !section.children.isEmpty else {
+                return [Item(id: "notice:\(section.notice.key)", section: section, child: section.notice)]
+            }
+            let group = Item(id: section.id, section: section)
+            guard expansion.groups.contains(section.id) else { return [group] }
+            return [group] + section.children.map { Item(id: "notice:\($0.key)", section: section, child: $0) }
+        }
+    }
     var body: some View {
         VStack(spacing: 0) {
-            ForEach(sections) { section in
-                if section.children.isEmpty {
-                    RichNoticeRow(notice: section.notice, commands: commands, summary: section.summary)
+            ForEach(items) { item in
+                if let child = item.child {
+                    RichNoticeRow(notice: child, commands: commands, summary: item.section.children.isEmpty ? item.section.summary : nil,
+                                  expansion: expansion.row(child.key))
+                        .transition(NotificationMotion.transition(reduceMotion: reduceMotion))
                 } else {
-                    NotificationGroup(summary: section.summary, children: section.children, commands: commands)
+                    NotificationGroup(summary: item.section.summary, children: item.section.children, commands: commands,
+                                      expanded: expansion.group(item.section.id))
+                        .transition(NotificationMotion.transition(reduceMotion: reduceMotion))
                 }
             }
-        }.padding(.vertical, 4)
+        }
+        .padding(.vertical, 4)
+        .notificationMotion(value: notices)
+        .notificationMotion(value: expansion.groups)
+        .notificationMotion(value: expansion.rows)
+        .notificationMotion(value: commands.replyTarget)
+        .notificationMotion(value: commands.feedback)
+        .notificationMotion(value: commands.pendingKeys)
+        .notificationMotion(value: commands.replyDraft)
+        .onChange(of: activeNotices ?? notices) { _, _ in
+            expansion.retain(notices: activeNotices ?? notices)
+        }
     }
-    private var sections: [NotificationSection] { NotificationSection.sections(notices) }
 }
 
 /// Search remains available as notifications arrive and leave.
 private final class FeedPresentation: ObservableObject {
     @Published var query = ""
     @Published var contentHeight: CGFloat = 100
+    var measured = false
+    let expansion = NotificationExpansionState()
 }
 
 struct NotificationFeed: View {
@@ -32,24 +77,29 @@ struct NotificationFeed: View {
     var maximumHeight: CGFloat = 480
     var search: Binding<String>? = nil
     var showsSearch = true
+    var expansion: NotificationExpansionState? = nil
     @StateObject private var presentation = FeedPresentation()
     private var query: Binding<String> { search ?? $presentation.query }
     private var filtered: [Notice] {
-        guard !query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return notices }
+        let term = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !term.isEmpty else { return notices }
         return notices.filter {
-            [$0.app, $0.title, $0.alertText].contains { $0.localizedCaseInsensitiveContains(query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)) }
+            $0.app.localizedCaseInsensitiveContains(term) || $0.title.localizedCaseInsensitiveContains(term)
+                || $0.alertText.localizedCaseInsensitiveContains(term)
         }
     }
     var body: some View {
-        VStack(spacing: 6) {
+        let visibleNotices = filtered
+        return VStack(spacing: 6) {
             if showsSearch && (!notices.isEmpty || !query.wrappedValue.isEmpty) {
                 NotificationSearchField(text: query)
                     .padding(.horizontal, 10)
             }
             NotificationScroll(contentHeight: presentation.contentHeight) {
                 VStack(spacing: 0) {
-                    NotificationList(notices: filtered, commands: commands)
-                    if filtered.isEmpty {
+                    NotificationList(notices: visibleNotices, commands: commands, activeNotices: notices,
+                                     expansion: expansion ?? presentation.expansion)
+                    if visibleNotices.isEmpty {
                         Text("No matching notifications").foregroundStyle(.secondary).padding(24)
                     }
                 }.frame(maxWidth: .infinity)
@@ -60,10 +110,22 @@ struct NotificationFeed: View {
                         }
                     }
                     .onPreferenceChange(FeedHeight.self) { height in
-                        if abs(presentation.contentHeight - height) > 1 { presentation.contentHeight = height }
+                        guard height.isFinite, height > 0 else { return }
+                        if !presentation.measured {
+                            presentation.measured = true
+                            var transaction = Transaction(animation: nil)
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { presentation.contentHeight = height }
+                        } else if abs(presentation.contentHeight - height) > 1 {
+                            presentation.contentHeight = height
+                        }
                     }
             }
-            .frame(height: min(max(60, presentation.contentHeight), max(60, maximumHeight)))
+            .frame(height: min(max(60, presentation.contentHeight), max(60, maximumHeight)), alignment: .top)
+            .notificationMotion(value: presentation.contentHeight)
+            // Start semantic transitions before crossing the hosting boundary.
+            // A search edit can change rows without changing the measured height.
+            .notificationMotion(value: visibleNotices)
         }
     }
 }
@@ -73,24 +135,19 @@ private struct FeedHeight: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-private final class GroupPresentation: ObservableObject {
-    @Published var expanded = false
-}
-
 private struct NotificationGroup: View {
     let summary: Notice?
     let children: [Notice]
     @ObservedObject var commands: NotificationCommandController
-    @StateObject private var presentation = GroupPresentation()
+    @Binding var expanded: Bool
     private var latest: Notice { children[0] }
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var canDismiss: Bool {
         if let summary, summary.dismissible { return !commands.pendingKeys.contains(summary.key) }
         return children.contains { $0.dismissible && !commands.pendingKeys.contains($0.key) }
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if presentation.expanded {
+            if expanded {
                 HStack(spacing: 8) {
                     Text(latest.app).font(.title3.weight(.semibold))
                     Text("\(children.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
@@ -100,7 +157,6 @@ private struct NotificationGroup: View {
                 .padding(.horizontal, 12)
                 .modifier(NotificationCard(canDismiss: canDismiss, dismiss: dismissGroup, surface: false))
                 .contextMenu { if let summary { NotificationGroupActions(notice: summary, commands: commands) } }
-                ForEach(children) { RichNoticeRow(notice: $0, commands: commands) }
                 if let summary {
                     NotificationReplyComposer(notice: summary, commands: commands).padding(.horizontal, 18)
                 }
@@ -125,17 +181,18 @@ private struct NotificationGroup: View {
                 Text(feedback).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 18)
             }
         }
-        .padding(.vertical, presentation.expanded ? 16 : 0)
+        .padding(.top, expanded ? 16 : 0)
+        .notificationMotion(value: expanded)
         .onChange(of: commands.replyTarget) { _, target in revealReply(target) }
         .onAppear { revealReply(commands.replyTarget) }
     }
     private var expansionButton: some View {
-        NotificationChevron(expanded: presentation.expanded, subject: "group") {
+        NotificationChevron(expanded: expanded, subject: "group") {
             toggleExpansion()
         }
     }
     private func toggleExpansion() {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) { presentation.expanded.toggle() }
+        expanded.toggle()
     }
     private func dismissGroup() {
         if let summary, summary.dismissible { commands.dismiss(summary) }
@@ -143,7 +200,7 @@ private struct NotificationGroup: View {
     }
     private func revealReply(_ target: NotificationCommandController.ReplyTarget?) {
         if let target, target.key == summary?.key || children.contains(where: { $0.key == target.key }) {
-            presentation.expanded = true
+            expanded = true
         }
     }
 }

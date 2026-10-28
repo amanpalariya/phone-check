@@ -54,10 +54,13 @@ struct CompanionView: View {
         .frame(width: 340)
         .background {
             GeometryReader { proxy in
-                Color.clear.preference(key: CompanionHeight.self, value: proxy.size.height)
+                AnimatedCompanionHeight(height: proxy.size.height)
+                    .notificationMotion(value: proxy.size.height)
             }
         }
         .onPreferenceChange(CompanionHeight.self, perform: contentHeightChanged)
+        .notificationMotion(value: model.notices)
+        .notificationMotion(value: testbed.notices)
         .tint(.accentColor)
         .onAppear { model.refreshAuthorization() }
         .onChange(of: testbed.showsInPane) { _, _ in presentation.query = "" }
@@ -264,4 +267,15 @@ private struct NativePrimaryAction: ViewModifier {
 private struct CompanionHeight: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// Emit the presented height each frame so the AppKit backdrop follows the list
+/// through interrupted transitions instead of snapping to its destination.
+private struct AnimatedCompanionHeight: View, Animatable {
+    var height: CGFloat
+    var animatableData: CGFloat {
+        get { height }
+        set { height = newValue }
+    }
+    var body: some View { Color.clear.preference(key: CompanionHeight.self, value: height) }
 }

@@ -224,6 +224,7 @@ final class NotificationPaneSurface: NSView {
     let compositor = CompositorBackdrop(frame: .zero)
     private let dimming = NSImageView()
     private var contentHeight: CGFloat = 240
+    private var maskTemplateSize = NSSize.zero
     private var appearanceSubscription: AnyCancellable?
     private var accessibilitySubscription: AnyCancellable?
     override var acceptsFirstResponder: Bool { true }
@@ -309,14 +310,20 @@ final class NotificationPaneSurface: NSView {
         backdrop.frame = rect
         dimming.frame = rect
         compositor.frame = rect
-        let mask = Self.featheredMask(size: rect.size)
-        backdrop.maskImage = mask
-        compositor.maskImage = mask
-        dimming.image = NSImage(size: rect.size, flipped: false) { bounds in
-            NSColor.black.setFill()
-            bounds.fill()
-            mask.draw(in: bounds, from: .zero, operation: .destinationIn, fraction: 1)
-            return true
+        // Rasterize only the fixed feathered edges. All three renderers stretch
+        // the opaque center, so resizing a list does no full-surface image work.
+        let templateSize = NSSize(width: min(160, rect.width), height: min(144, rect.height))
+        if maskTemplateSize != templateSize {
+            maskTemplateSize = templateSize
+            let mask = Self.featheredMask(size: templateSize)
+            mask.capInsets = NSEdgeInsets(top: min(64, templateSize.height * 0.48),
+                                          left: min(72, templateSize.width * 0.48),
+                                          bottom: min(64, templateSize.height * 0.48),
+                                          right: min(72, templateSize.width * 0.48))
+            mask.resizingMode = .stretch
+            backdrop.maskImage = mask
+            compositor.maskImage = mask
+            dimming.image = mask
         }
     }
 

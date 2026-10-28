@@ -21,6 +21,13 @@ final class CompositorBackdrop: NSView {
     var maskImage: NSImage? {
         didSet {
             feather.contents = maskImage?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            if let image = maskImage, image.size.width > 0, image.size.height > 0 {
+                let insets = image.capInsets
+                feather.contentsCenter = CGRect(x: insets.left / image.size.width,
+                                                y: insets.bottom / image.size.height,
+                                                width: max(0.001, 1 - (insets.left + insets.right) / image.size.width),
+                                                height: max(0.001, 1 - (insets.top + insets.bottom) / image.size.height))
+            }
             layer?.mask = maskImage == nil ? nil : feather
         }
     }

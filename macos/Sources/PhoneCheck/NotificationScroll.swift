@@ -3,56 +3,116 @@ import SwiftUI
 
 /// Use AppKit's overlay scroller so the compact feed has equal side margins.
 /// The scroll indicator must not reserve a column or resize notification content.
-struct NotificationScroll<Content: View>: NSViewRepresentable {
+struct NotificationScroll<Content: View>: View {
     let contentHeight: CGFloat
     @ViewBuilder let content: () -> Content
+    @StateObject private var geometry = NotificationScrollGeometry()
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    final class Coordinator {
-        var height: NSLayoutConstraint?
+    var body: some View {
+        NotificationScrollBridge(contentHeight: contentHeight, geometry: geometry, content: content)
+            .background {
+                AnimatedDocumentHeight(height: contentHeight, geometry: geometry)
+            }
     }
+}
+
+/// Only this lightweight leaf is evaluated on animation frames. Updating the
+/// document extent must not replace or force-layout the entire SwiftUI feed.
+private struct AnimatedDocumentHeight: View, Animatable {
+    var height: CGFloat
+    let geometry: NotificationScrollGeometry
+    var animatableData: CGFloat {
+        get { height }
+        set { height = newValue }
+    }
+    var body: some View { DocumentHeightBridge(height: height, geometry: geometry) }
+}
+
+private struct DocumentHeightBridge: NSViewRepresentable {
+    let height: CGFloat
+    let geometry: NotificationScrollGeometry
+    func makeNSView(context: Context) -> NSView { NSView() }
+    func updateNSView(_ view: NSView, context: Context) { geometry.resize(to: height) }
+}
+
+private final class NotificationScrollGeometry: ObservableObject {
+    weak var scroll: NotificationOverlayScrollView?
+
+    func resize(to height: CGFloat) {
+        guard let scroll, let document = scroll.documentView, height.isFinite else { return }
+        let height = max(1, height)
+        guard abs(document.frame.height - height) > 0.01 else { return }
+        let origin = scroll.contentView.bounds.origin
+        document.setFrameSize(NSSize(width: scroll.contentSize.width, height: height))
+        scroll.restoreViewport(origin)
+    }
+}
+
+/// The hosting view always receives the destination content size. A separate
+/// flipped document supplies the animated scroll extent. In particular, AppKit
+/// must never center an oversized hosting root inside a shorter animated frame.
+private final class NotificationDocumentView: NSView {
+    let host: NSHostingView<AnyView>
+    var layoutHeight: CGFloat { didSet { layoutHost() } }
+    override var isFlipped: Bool { true }
+
+    init(root: AnyView, height: CGFloat) {
+        host = NSHostingView(rootView: root)
+        layoutHeight = max(1, height)
+        super.init(frame: NSRect(x: 0, y: 0, width: 1, height: layoutHeight))
+        host.sizingOptions = []
+        addSubview(host)
+        layoutHost()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        let widthChanged = frame.width != newSize.width
+        super.setFrameSize(newSize)
+        if widthChanged { layoutHost() }
+    }
+
+    private func layoutHost() {
+        let rect = NSRect(x: 0, y: 0, width: bounds.width, height: layoutHeight)
+        if host.frame != rect { host.frame = rect }
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+}
+
+private struct NotificationScrollBridge<Content: View>: NSViewRepresentable {
+    let contentHeight: CGFloat
+    let geometry: NotificationScrollGeometry
+    @ViewBuilder let content: () -> Content
 
     private func hostedContent(_ context: Context) -> AnyView {
         AnyView(content()
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
             .environment(\.colorScheme, context.environment.colorScheme)
             .environment(\.controlActiveState, context.environment.controlActiveState)
             .environment(\.appearsActive, context.environment.appearsActive))
     }
 
-    func makeNSView(context: Context) -> NSScrollView {
+    func makeNSView(context: Context) -> NotificationOverlayScrollView {
         let scroll = NotificationOverlayScrollView()
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.hasHorizontalScroller = false
         scroll.autohidesScrollers = true
         scroll.scrollerStyle = .overlay
-        let host = NSHostingView(rootView: hostedContent(context))
-        host.sizingOptions = []
-        host.translatesAutoresizingMaskIntoConstraints = false
-        scroll.documentView = host
-        let height = host.heightAnchor.constraint(equalToConstant: max(1, contentHeight))
-        context.coordinator.height = height
-        NSLayoutConstraint.activate([
-            host.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
-            host.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
-            host.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
-            height
-        ])
+        let document = NotificationDocumentView(root: hostedContent(context), height: contentHeight)
+        document.autoresizingMask = [.width]
+        scroll.documentView = document
+        geometry.scroll = scroll
         return scroll
     }
 
-    func updateNSView(_ scroll: NSScrollView, context: Context) {
-        let origin = scroll.contentView.bounds.origin
-        (scroll.documentView as? NSHostingView<AnyView>)?.rootView = hostedContent(context)
-        context.coordinator.height?.constant = max(1, contentHeight)
-        scroll.layoutSubtreeIfNeeded()
-        // AppKit's implicit document resizing can anchor to the bottom while a
-        // row expands. Keep the viewport in place and allow the full new height.
-        let maxY = max(0, contentHeight - scroll.contentView.bounds.height)
-        scroll.contentView.scroll(to: NSPoint(x: 0, y: min(max(0, origin.y), maxY)))
-        scroll.reflectScrolledClipView(scroll.contentView)
+    func updateNSView(_ scroll: NotificationOverlayScrollView, context: Context) {
+        guard let document = scroll.documentView as? NotificationDocumentView else { return }
+        withTransaction(context.transaction) {
+            document.host.rootView = hostedContent(context)
+            document.layoutHeight = max(1, contentHeight)
+        }
     }
 }
 
@@ -62,8 +122,16 @@ final class NotificationOverlayScrollView: NSScrollView {
     private(set) var hasMoreBelow = false
 
     override func layout() {
+        let origin = contentView.bounds.origin
         super.layout()
-        updateEdgeFade()
+        restoreViewport(origin)
+    }
+
+    func restoreViewport(_ origin: NSPoint) {
+        let maxY = max(0, (documentView?.frame.height ?? 0) - contentView.bounds.height)
+        let pinned = NSPoint(x: 0, y: min(max(0, origin.y), maxY))
+        if contentView.bounds.origin != pinned { contentView.scroll(to: pinned) }
+        reflectScrolledClipView(contentView)
     }
 
     override func reflectScrolledClipView(_ clipView: NSClipView) {

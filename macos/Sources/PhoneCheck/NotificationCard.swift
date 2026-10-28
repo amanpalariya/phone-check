@@ -77,7 +77,7 @@ struct NotificationCard: ViewModifier {
     }
 
     private func finishSwipe(_ distance: CGFloat) {
-        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { presentation.translation = 0 }
+        withAnimation(NotificationMotion.animation(reduceMotion: reduceMotion)) { presentation.translation = 0 }
         if canDismiss && abs(distance) >= threshold { dismiss() }
     }
 }
@@ -117,7 +117,11 @@ private struct TrackpadDismissal: NSViewRepresentable {
     let changed: (CGFloat) -> Void
     let ended: (CGFloat) -> Void
 
-    func makeNSView(context: Context) -> SwipeView { SwipeView() }
+    func makeNSView(context: Context) -> SwipeView {
+        let view = SwipeView()
+        view.identifier = NSUserInterfaceItemIdentifier("notification-card-swipe")
+        return view
+    }
     func updateNSView(_ view: SwipeView, context: Context) {
         view.enabled = enabled
         view.changed = changed
