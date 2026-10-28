@@ -14,6 +14,37 @@ struct RichNoticeRow: View {
     private var pending: Bool { commands.pendingKeys.contains(notice.key) }
     private var actions: [NoticeAction] { notice.actions ?? [] }
     var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            if notice.openable == true {
+                Button { commands.open(notice) } label: { notificationContent }
+                    .buttonStyle(.plain)
+                    .disabled(pending)
+                    .accessibilityHint("Opens on phone")
+            } else {
+                notificationContent
+            }
+            VStack(alignment: .leading, spacing: 7) {
+                if needsExpansion { expansionButton }
+                if !actions.isEmpty {
+                    Group {
+                        if actions.count <= 3 && actions.reduce(0, { $0 + $1.title.count }) <= 28 {
+                            HStack(spacing: 6) { actionButtons }
+                        } else {
+                            VStack(alignment: .leading, spacing: 6) { actionButtons }
+                        }
+                    }.padding(.top, 2)
+                }
+                replyComposer
+                if let feedback = commands.feedback[notice.key] {
+                    Text(feedback).font(.caption).foregroundStyle(.secondary)
+                }
+            }.padding(.leading, 41)
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(NotificationCard(canDismiss: notice.dismissible && !pending) { commands.dismiss(notice) })
+        .accessibilityElement(children: .contain)
+    }
+    private var notificationContent: some View {
         HStack(alignment: .top, spacing: 11) {
             Group {
                 if let icon = NoticeImage.icon(notice) {
@@ -30,8 +61,8 @@ struct RichNoticeRow: View {
                     Text(notice.app).font(.caption.weight(.medium)).foregroundStyle(.secondary)
                     Spacer(minLength: 4)
                     if notice.groupSummary == true { Text("Group").font(.caption2).foregroundStyle(.secondary) }
-                    if notice.ongoing == true { Image(systemName: "pin").font(.caption2).foregroundStyle(.secondary).help("Ongoing notification") }
-                }
+                    if pending { ProgressView().controlSize(.mini).accessibilityLabel("Waiting for phone") }
+                }.padding(.trailing, notice.dismissible ? 24 : 0)
                 if !notice.title.isEmpty { Text(notice.title).font(.body.weight(.semibold)) }
                 content
                 if let image = NoticeImage.image(notice) {
@@ -48,35 +79,8 @@ struct RichNoticeRow: View {
                             .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
-                if !actions.isEmpty {
-                    Group {
-                        if actions.count <= 3 && actions.reduce(0, { $0 + $1.title.count }) <= 28 {
-                            HStack(spacing: 6) { actionButtons }
-                        } else {
-                            VStack(alignment: .leading, spacing: 6) { actionButtons }
-                        }
-                    }.padding(.top, 2)
-                }
-                replyComposer
-                HStack(spacing: 12) {
-                    if notice.openable == true {
-                        Button("Open on phone") { commands.open(notice) }
-                            .disabled(pending).foregroundStyle(accent)
-                    }
-                    if notice.dismissible {
-                        Button(pending ? "Waiting…" : "Dismiss on phone") { commands.dismiss(notice) }
-                            .disabled(pending).foregroundStyle(accent)
-                    } else {
-                        Text("Cannot dismiss").foregroundStyle(.secondary)
-                    }
-                }.buttonStyle(.plain).font(.caption.weight(.medium)).padding(.top, 4)
-                if let feedback = commands.feedback[notice.key] {
-                    Text(feedback).font(.caption).foregroundStyle(.secondary)
-                }
             }.frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
+        }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
     }
     @ViewBuilder private var content: some View {
         if let messages = notice.messages, !messages.isEmpty {
@@ -94,17 +98,19 @@ struct RichNoticeRow: View {
                         .lineLimit(presentation.expanded ? nil : 3)
                 }
             }
-            if messages.count > 4 { expansionButton }
         } else if let lines = notice.lines, !lines.isEmpty {
             ForEach(Array((presentation.expanded ? lines : Array(lines.prefix(5))).enumerated()), id: \.offset) { _, line in
                 Text(line).font(.subheadline).foregroundStyle(.secondary).lineLimit(presentation.expanded ? nil : 2)
             }
-            if lines.count > 5 { expansionButton }
         } else if !notice.body.isEmpty {
             Text(notice.body).font(.subheadline).foregroundStyle(.secondary)
-                .lineLimit(presentation.expanded ? nil : 5).textSelection(.enabled)
-            if notice.body.count > 240 { expansionButton }
+                .lineLimit(presentation.expanded ? nil : 5)
         }
+    }
+    private var needsExpansion: Bool {
+        if let messages = notice.messages, !messages.isEmpty { return messages.count > 4 }
+        if let lines = notice.lines, !lines.isEmpty { return lines.count > 5 }
+        return notice.body.count > 240
     }
     private var expansionButton: some View {
         Button(presentation.expanded ? "Show less" : "Show more") { presentation.expanded.toggle() }

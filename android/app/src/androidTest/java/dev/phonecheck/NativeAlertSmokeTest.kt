@@ -1,6 +1,7 @@
 package dev.phonecheck
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.uiautomator.UiDevice
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -34,24 +35,30 @@ class NativeAlertSmokeTest {
             android.os.SystemClock.sleep(250)
         }
         assumeTrue("Mac test-app notification authorization was not granted", allowed)
-        onMain { TestNotifications.post(target, DemoScenario.BASIC) }
-        waitFor("native text notification delivered") { host().getJSONArray("delivered").length() >= 1 }
-        onMain { TestNotifications.post(target, DemoScenario.PICTURE) }
-        waitFor("native image attachment delivered") { host().getBoolean("deliveredImage") }
-        onMain { TestNotifications.post(target, DemoScenario.CHAT) }
-        waitFor("native text-input action registered") { host().getBoolean("nativeReply") }
-        val actions = host().getJSONArray("nativeButtons")
-        assertTrue((0 until actions.length()).any { actions.getString(it) == "Dismiss on phone" })
-        host("native", "Sample chat", "Reply", "Native smoke reply")
-        waitFor("native reply handler dispatches RemoteInput") {
-            var received = false; onMain { received = TestbedState.lastReply == "Native smoke reply" }; received
-        }
-        host("dismiss", "Basic")
-        waitFor("native delivered copy withdrawn on phone removal") {
-            val keys = host().getJSONArray("delivered")
-            (0 until keys.length()).none { keys.getString(it).contains("|101|") }
-        }
-        onMain { TestNotifications.clear(target) }
-        waitFor("native test notifications cleared") { host().getJSONArray("delivered").length() == 0 }
+        // Native alert delivery is intentionally suppressed while the phone is in use.
+        val device = UiDevice.getInstance(instrumentation)
+        device.sleep()
+        waitFor("phone no longer in use") { !PhoneAttention(target).isInUse() }
+        try {
+            onMain { TestNotifications.post(target, DemoScenario.BASIC) }
+            waitFor("native text notification delivered") { host().getJSONArray("delivered").length() >= 1 }
+            onMain { TestNotifications.post(target, DemoScenario.PICTURE) }
+            waitFor("native image attachment delivered") { host().getBoolean("deliveredImage") }
+            onMain { TestNotifications.post(target, DemoScenario.CHAT) }
+            waitFor("native text-input action registered") { host().getBoolean("nativeReply") }
+            val actions = host().getJSONArray("nativeButtons")
+            assertTrue((0 until actions.length()).any { actions.getString(it) == "Dismiss on phone" })
+            host("native", "Sample chat", "Reply", "Native smoke reply")
+            waitFor("native reply handler dispatches RemoteInput") {
+                var received = false; onMain { received = TestbedState.lastReply == "Native smoke reply" }; received
+            }
+            host("dismiss", "Basic")
+            waitFor("native delivered copy withdrawn on phone removal") {
+                val keys = host().getJSONArray("delivered")
+                (0 until keys.length()).none { keys.getString(it).contains("|101|") }
+            }
+            onMain { TestNotifications.clear(target) }
+            waitFor("native test notifications cleared") { host().getJSONArray("delivered").length() == 0 }
+        } finally { device.wakeUp() }
     }
 }

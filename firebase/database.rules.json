@@ -1,0 +1,34 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "pairs": {
+      "$pair": {
+        "sessions": {
+          "$session": {
+            "phoneToMac": {
+              ".read": "auth != null && auth.uid === data.parent().child('macUID').val() && data.parent().child('expiresAt').val() > now",
+              ".write": "auth != null && auth.uid === data.parent().child('phoneUID').val() && data.parent().child('expiresAt').val() > now",
+              ".validate": "newData.isString() && newData.val().length <= 2097152"
+            },
+            "phoneToMacAck": {
+              ".read": "auth != null && auth.uid === data.parent().child('phoneUID').val() && data.parent().child('expiresAt').val() > now",
+              ".write": "auth != null && auth.uid === data.parent().child('macUID').val() && data.parent().child('expiresAt').val() > now",
+              ".validate": "newData.isString() && newData.val().matches(/^[0-9]{1,19}$/)"
+            },
+            "macToPhone": {
+              ".read": "auth != null && auth.uid === data.parent().child('phoneUID').val() && data.parent().child('expiresAt').val() > now",
+              ".write": "auth != null && auth.uid === data.parent().child('macUID').val() && data.parent().child('expiresAt').val() > now",
+              ".validate": "newData.isString() && newData.val().length <= 2097152"
+            },
+            "macToPhoneAck": {
+              ".read": "auth != null && auth.uid === data.parent().child('macUID').val() && data.parent().child('expiresAt').val() > now",
+              ".write": "auth != null && auth.uid === data.parent().child('phoneUID').val() && data.parent().child('expiresAt').val() > now",
+              ".validate": "newData.isString() && newData.val().matches(/^[0-9]{1,19}$/)"
+            }
+          }
+        }
+      }
+    }
+  }
+}

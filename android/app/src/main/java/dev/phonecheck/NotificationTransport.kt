@@ -6,8 +6,15 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
+/** Session events arrive on main; sends may originate on the ordered notification worker. */
+internal data class TransportCallbacks(
+    val onConnected: () -> Unit,
+    val onMessage: (JSONObject) -> Unit,
+    val onDisconnected: () -> Unit
+)
+
 internal interface NotificationTransport : AutoCloseable {
-    fun start(pairing: Pairing)
+    fun start()
     fun stop()
     fun send(message: JSONObject)
     fun sendBatch(messages: List<JSONObject>)
@@ -15,6 +22,7 @@ internal interface NotificationTransport : AutoCloseable {
 }
 
 internal class LanTransport(
+    private val pairing: Pairing,
     private val main: Handler,
     private val mayConnect: () -> Boolean,
     private val onConnecting: () -> Unit,
@@ -28,7 +36,7 @@ internal class LanTransport(
     @Volatile private var link: SecureLink? = null
     private var worker: Thread? = null
 
-    override fun start(pairing: Pairing) {
+    override fun start() {
         stop()
         val epoch = generation
         worker = Thread({

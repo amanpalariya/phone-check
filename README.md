@@ -2,7 +2,7 @@
 
 Android notification mirroring, actions, replies, and dismissal, with a native macOS menu-bar companion. Both apps are in this repository. One phone, one Mac, same local network. No backend or accounts.
 
-Local Wi-Fi remains the transport for this version and its integration tests. Firebase is the planned transport for the production app; it is not integrated yet. Preserve the same sync, pairing, and confirmed-dismissal requirements when adding it.
+Local Wi-Fi remains the configured transport and the integration-test path. Firebase is the intended production default; both apps now include project-independent HTTPS real-time adapters behind the same notification interfaces. Project authentication, cloud pairing, session provisioning/reconnect and setup UI remain to be connected when the project exists. See [Firebase setup and architecture](firebase/README.md).
 
 - `android/`: Kotlin, Compose, Material 3; Android 11+. System dynamic color on Android 12+, Material purple fallback on older versions.
 - `macos/`: SwiftUI, Network, CryptoKit, UserNotifications; macOS 14+. Native Liquid Glass on macOS 26+, standard-material fallback on older versions.
@@ -47,7 +47,7 @@ swift run --package-path macos PhoneCheckChecks
 3. Grant Android notification access and, on Android 17+, local network access. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
 4. Enable Mac notifications in the companion. Allow local network access if macOS asks.
 
-Existing phone notifications appear silently in the companion on each connection. Only live, changed notifications produce system alerts. **Dismiss on phone** waits for phone confirmation. Clearing or timing out a Mac banner never dismisses the phone notification.
+Existing phone notifications appear silently in the companion on each connection. Only live, changed notifications produce system alerts. While the phone screen is on and unlocked, notifications still sync but Mac banners are suppressed; locking the phone does not replay them. **Dismiss on phone** waits for phone confirmation. Clearing or timing out a Mac banner never dismisses the phone notification.
 
 Unpair on both devices to replace a phone, replace a Mac, or change a Mac address after DHCP changes. Permission revocation disconnects syncing; restore access to resume. Device clocks must agree within roughly ten seconds for dismissal commands. Notification content comes only from Android's listener API: some apps, work profiles, private content, and non-dismissible notifications are restricted by the OS.
 

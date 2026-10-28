@@ -19,8 +19,10 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     private var credentials: Credentials?
     private var listener: NWListener?
     private var candidates: [UUID: FramedConnection] = [:]
-    private var active: FramedConnection?
+    private var active: (any NotificationConnection)?
+    private var usesLocalNetwork = true
     private var state = ActiveState()
+    private var phoneAttention = PhoneAttentionState()
     private var staged: [Notice]?
     private var stagedBytes = 0
     private var pairExpiry: Date?
@@ -62,7 +64,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         return "pc1|\(host)|\(Wire.port)|\(secret)"
     }
     func startListening() {
-        guard listener == nil else { return }
+        guard usesLocalNetwork, listener == nil else { return }
         addresses = privateAddresses()
         if !addresses.contains(host) { host = addresses.first ?? "" }
         do {
@@ -109,6 +111,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         pairingTimer?.invalidate()
         active?.close(); Array(candidates.values).forEach { $0.close() }
         clearActive(); status = "Not paired"; error = nil
+        usesLocalNetwork = true; startListening()
     }
     private func accept(_ connection: NWConnection) {
         guard candidates.count < 4, let credentials,
@@ -157,6 +160,26 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         var challenge = Message("challenge"); challenge.nonce = serverNonce.base64EncodedString()
         client.send(challenge)
     }
+    /// Cloud provisioning supplies an authenticated session after explicit pairing.
+    /// The same snapshot, validation, commands and alert policy serve every transport.
+    func connect(using connection: any NotificationConnection) {
+        guard paired else { connection.close(); error = "Pair a phone first"; return }
+        usesLocalNetwork = false
+        listener?.cancel(); listener = nil; listening = false
+        active?.close(); Array(candidates.values).forEach { $0.close() }
+        clearActive(); active = connection; status = "Syncing…"
+        connection.onMessage = { [weak self, weak connection] message in
+            guard let self, let connection, self.active === connection else { return }
+            self.receive(message)
+        }
+        connection.onClose = { [weak self, weak connection] in
+            guard let self, let connection, self.active === connection else { return }
+            self.active = nil; self.clearActive(); self.status = "Disconnected"
+        }
+        syncDeadline = Timer.scheduledTimer(withTimeInterval: 20, repeats: false) { [weak connection] _ in connection?.close() }
+        connection.start()
+    }
+
     private func receive(_ message: Message) {
         switch message.type {
         case "snapshot_begin":
@@ -175,7 +198,11 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             guard !state.synchronized, staged == nil, let items = message.items, items.count <= 1000,
                   items.allSatisfy(validNotice) else { active?.close(); return }
             completeSnapshot(items)
+        case "attention":
+            updateAttention(message)
+            if phoneAttention.inUse == true { center.removeAllPendingNotificationRequests() }
         case "upsert":
+            updateAttention(message)
             guard state.synchronized, let item = message.item, validNotice(item),
                   state.items.count < 1000 || state.items[item.key] != nil else { active?.close(); return }
             let previous = state.items[item.key]
@@ -183,7 +210,9 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
                 let contentChanged = previous?.revision != item.revision
                 if contentChanged { commands.notificationChanged(item) }
                 publish()
-                if alertsAllowed && contentChanged {
+                if alertsAllowed && contentChanged && AlertPolicy.shouldAlert(
+                    phoneInUse: phoneAttention.inUse ?? message.phoneInUse, sentAt: message.sentAt,
+                    now: Int64(Date().timeIntervalSince1970 * 1000)) {
                     alerts.deliver(item, isNew: previous == nil) { [weak self] in self?.error = "Mac notification unavailable" }
                 }
             }
@@ -200,6 +229,10 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         case "pong": break
         default: active?.close()
         }
+    }
+    private func updateAttention(_ message: Message) {
+        phoneAttention.update(inUse: message.phoneInUse, sentAt: message.sentAt,
+                              now: Int64(Date().timeIntervalSince1970 * 1000))
     }
     private func completeSnapshot(_ items: [Notice]) {
         state.snapshot(items); staged = nil; stagedBytes = 0
@@ -227,7 +260,8 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         alerts.register(notices)
     }
     private func clearActive() {
-        connected = false; state.reset(); notices = []; staged = nil; stagedBytes = 0
+        connected = false; state.reset(); phoneAttention = PhoneAttentionState()
+        notices = []; staged = nil; stagedBytes = 0
         commands.reset(); alerts.register([])
         syncDeadline?.invalidate(); syncDeadline = nil
         center.removeAllDeliveredNotifications(); center.removeAllPendingNotificationRequests()
@@ -251,7 +285,9 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        completionHandler([.banner, .list])
+        DispatchQueue.main.async { [weak self] in
+            completionHandler(self?.phoneAttention.inUse == true ? [] : [.banner, .list])
+        }
     }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {

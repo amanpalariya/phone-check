@@ -65,4 +65,48 @@ Use a physical Android phone and Mac on the same private Wi-Fi. Build/install th
 
 References checked October 27, 2026: [Apple Liquid Glass adoption](https://developer.apple.com/documentation/technologyoverviews/adopting-liquid-glass), [Apple materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials), and [Android Material 3](https://developer.android.com/develop/ui/compose/designsystems/material3).
 
-Run the visual review app with `--rich` to inspect production rich rows and reply controls in light and dark appearances using synthetic content.
+The visual review app opens production rich rows and reply controls in light and dark appearances using synthetic content. Pass `--setup` to inspect the pairing surface instead.
+
+## Notification cards — October 28, 2026
+
+- Rounded material cards with spacing, a hover/focus close button, and left/right mouse-drag and trackpad swipe dismissal. All entry points use the existing confirmed phone-dismissal command; pending and non-dismissible notices cannot be dismissed again.
+- SwiftUI app and isolated material review app built successfully; all seven core checks passed. Rounded cards were visually reviewed in light/dark, and the hover close button appeared during a mouse drag in the isolated review app. Physical trackpad and paired-phone acceptance remain to be checked.
+- Follow-up: removed the visible open/dismiss labels, non-dismissible label, and ongoing pin. Clicking notification content invokes its original phone content action when available; reply, expansion, and original action controls remain separate. Mouse swipes take priority over opening. Rebuilt the Mac app and review app, reran all seven core checks, reviewed the cleaner cards in light/dark, and clicked Reply to verify the composer still opens. End-to-end opening/dismissal on a paired phone was not rerun.
+
+## Transport preparation and smart alerts — October 28, 2026
+
+- Notification transport selection is separate from capture, active-state reconciliation and
+  command execution. Mac LAN and Firebase sessions share `NotificationConnection`; Android
+  uses a factory with explicit local-network requirements. LAN remains configured by default.
+- Added project-independent Firebase RTDB HTTPS/SSE clients and encrypted, bounded,
+  acknowledged mailboxes on both platforms. Added an undeployed deny-by-default rules template
+  and the remaining project/auth/pairing/session/cleanup/wake-delivery work in `firebase/README.md`.
+- Added screen-on/unlocked attention samples on live posts and screen/unlock transitions.
+  Mac suppresses alerts while keeping mirrored content; queued foreground presentation also
+  checks current attention. Locking never replays suppressed alerts. Reconnect snapshots stay silent.
+- Ran `swift build --package-path macos --product PhoneCheck` successfully. Ran the seven
+  existing core checks and six new Firebase/attention check groups successfully. Checks cover
+  ordered duplex delivery, duplicate suppression, queue bounds, invalid ACKs, server write
+  failures, expiry, tampering, session isolation, SSE framing/revocation, endpoint configuration,
+  activity freshness/order and a shared Swift/JVM encrypted-frame fixture.
+- Ran Android `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug` and
+  `:app:assembleDebugAndroidTest` successfully with the existing JDK 17.0.21 toolchain.
+  All 11 JVM tests passed. JSON-Java 20260814 is test-only; its version was checked against
+  Maven Central metadata. No production Firebase SDK dependency or credentials were added.
+- Updated the optional native-alert instrumentation test to put the emulator to sleep while
+  testing banner delivery and restore it afterward. Built this instrumentation APK; did not
+  execute the emulator/native-alert suite in this change. No emulator was connected, and an
+  existing Mac companion was listening on the test suite's required port; it was left running.
+- No Firebase project, cloud authentication, deployed rules, live stream, or physical-device
+  validation was available. The rule file was checked as JSON, not executed against Firebase.
+  Current checks do not establish Doze, push wakeup, network/token expiry or delivery latency.
+
+Additional device checks:
+
+- [ ] While the phone is awake and unlocked, post/update notifications: the Mac list updates
+  without a new banner. Lock it: subsequent live posts may alert; earlier suppressed posts do not.
+- [ ] Unlock while a Mac alert is queued: pending/foreground presentation respects the latest
+  attention signal. Disconnect/reconnect and verify silent reconciliation and a fresh signal.
+- [ ] After provisioning Firebase, validate the role/expiry/size rules in its emulator and on the
+  project, then repeat the existing pairing, permission, action, reply, dismissal and reconnect
+  checks over Firebase, including session rotation, unpair/revocation cleanup and token refresh.

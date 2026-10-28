@@ -12,7 +12,7 @@ struct MaterialReview {
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Phone Check — Material Review"
         window.contentView = NSHostingView(rootView: Group {
-            if CommandLine.arguments.contains("--rich") { RichReview() } else { Review() }
+            if CommandLine.arguments.contains("--setup") { Review() } else { RichReview() }
         })
         if let screen = NSScreen.main { window.setFrame(screen.visibleFrame, display: true) }
         window.makeKeyAndOrderFront(nil)

@@ -3,7 +3,7 @@ import Network
 import PhoneCheckCore
 
 // All callbacks and state run on the main queue. Each connection has bounded frames and a deadline.
-final class FramedConnection {
+final class FramedConnection: NotificationConnection {
     let connection: NWConnection
     var onMessage: ((Message) -> Void)?
     var onClose: (() -> Void)?

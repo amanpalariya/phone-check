@@ -13,6 +13,7 @@ struct PhoneCheckCoreTests {
         try tests.testFrameLimitsAndJSONRoundTrip()
         try tests.testRichAndLegacyNoticeDecoding()
         print("7 core checks passed")
+        try FirebaseChecks.run()
     }
     private func notice(_ revision: String = "one", key: String = "k") -> Notice {
         Notice(key: key, app: "Mail", title: "Subject", body: "Text", revision: revision, dismissible: true, postedAt: 1)

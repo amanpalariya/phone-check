@@ -18,6 +18,7 @@ public struct Message: Codable {
     public var sentAt: Int64?
     public var expiresAt: Int64?
     public var status: String?
+    public var phoneInUse: Bool?
     public init(_ type: String) { self.type = type }
 }
 

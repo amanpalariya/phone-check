@@ -6,7 +6,7 @@ struct NotificationList: View {
     let notices: [Notice]
     @ObservedObject var commands: NotificationCommandController
     var body: some View {
-        LazyVStack(spacing: 0) {
+        LazyVStack(spacing: 10) {
             ForEach(sections) { section in
                 if section.children.isEmpty {
                     RichNoticeRow(notice: section.notice, commands: commands)
@@ -27,7 +27,7 @@ struct NotificationList: View {
                     }.padding(.horizontal, 12).padding(.vertical, 10)
                 }
             }
-        }
+        }.padding(.vertical, 4)
     }
     private struct Section: Identifiable {
         let notice: Notice
