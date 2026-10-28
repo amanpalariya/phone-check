@@ -81,6 +81,8 @@ func runPaneChecks() {
     testbed.showsInPane = true
     let controller = NotificationPaneController(model: model, testbed: testbed)
     func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.3)) }
+    let originalSystem = NotificationAppearance.shared.usesSystemBackdrop
+    NotificationAppearance.shared.usesSystemBackdrop = true
     controller.show()
     settle()
     let panel = NSApp.windows.compactMap { $0 as? NotificationPanel }.first!
@@ -89,12 +91,24 @@ func runPaneChecks() {
     let surface = panel.contentView as! NotificationPaneSurface
     if #available(macOS 26.0, *) {
         let glass = surface.backdrop as! NSGlassEffectView
-        precondition(glass.style == .clear && glass.cornerRadius == 0 && glass.layer?.mask != nil)
+        precondition(glass.style == .regular && glass.cornerRadius == 0 && glass.layer?.mask != nil)
     } else {
         let blur = surface.backdrop as! NSVisualEffectView
         precondition(blur.blendingMode == .behindWindow && blur.maskImage != nil)
     }
     let originalAppearance = surface.appearance
+    for system in [NSAppearance.Name.aqua, .darkAqua] {
+        surface.appearance = NSAppearance(named: system)
+        settle()
+        precondition(surface.backdrop.appearance == nil && surface.backdrop.alphaValue == 1,
+                     "System backdrop must inherit its appearance and preserve native opacity")
+        if #available(macOS 26.0, *), let glass = surface.backdrop as? NSGlassEffectView {
+            precondition(glass.style == .regular && glass.tintColor == nil)
+        }
+    }
+    NotificationAppearance.shared.usesSystemBackdrop = false
+    settle()
+
     for (system, backdrop) in [(NSAppearance.Name.aqua, NSAppearance.Name.darkAqua), (.darkAqua, .aqua)] {
         surface.appearance = NSAppearance(named: system)
         settle()
@@ -104,6 +118,8 @@ func runPaneChecks() {
                      "Notification content must keep the system appearance")
     }
     surface.appearance = originalAppearance
+    NotificationAppearance.shared.usesSystemBackdrop = originalSystem
+    settle()
     precondition(surface.host.frame == surface.bounds, "Content must follow the anchored surface")
     func checkScroll(_ view: NSView) {
         if let scroll = view as? NotificationOverlayScrollView {

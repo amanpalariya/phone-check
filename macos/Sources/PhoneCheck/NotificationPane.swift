@@ -246,8 +246,12 @@ final class NotificationPaneSurface: NSView {
         host.autoresizingMask = [.width, .height]
         addSubview(host)
         appearanceSubscription = NotificationAppearance.shared.$transparency
+            .combineLatest(NotificationAppearance.shared.$usesSystemBackdrop)
             .receive(on: RunLoop.main)
-            .sink { [weak self] in self?.updateTransparency($0) }
+            .sink { [weak self] transparency, system in
+                self?.updateBackdropAppearance(system: system)
+                self?.updateTransparency(transparency, system: system)
+            }
         accessibilitySubscription = NSWorkspace.shared.notificationCenter
             .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
             .sink { [weak self] _ in self?.updateTransparency(NotificationAppearance.shared.transparency) }
@@ -260,17 +264,27 @@ final class NotificationPaneSurface: NSView {
         updateBackdropAppearance()
     }
 
-    private func updateBackdropAppearance() {
+    private func updateBackdropAppearance(system: Bool = NotificationAppearance.shared.usesSystemBackdrop) {
+        if system {
+            // Let AppKit adapt the material to the actual background and appearance.
+            backdrop.appearance = nil
+            if #available(macOS 26.0, *), let glass = backdrop as? NSGlassEffectView {
+                glass.style = .regular
+                glass.tintColor = nil
+            }
+            return
+        }
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         // Invert only the backdrop. Cards and controls retain the system appearance.
         backdrop.appearance = NSAppearance(named: dark ? .aqua : .darkAqua)
         if #available(macOS 26.0, *), let glass = backdrop as? NSGlassEffectView {
+            glass.style = .clear
             glass.tintColor = (dark ? NSColor.white : NSColor.black).withAlphaComponent(0.18)
         }
     }
 
-    private func updateTransparency(_ value: Double) {
-        backdrop.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 1 - value
+    private func updateTransparency(_ value: Double, system: Bool = NotificationAppearance.shared.usesSystemBackdrop) {
+        backdrop.alphaValue = system || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 1 - value
     }
 
     override func layout() {

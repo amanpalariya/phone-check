@@ -202,3 +202,24 @@ Additional device checks:
 - Debug/review/release builds and native-pane checks passed, including live light/dark
   appearance switching and verification that notification content retains its appearance.
   Inspected the actual patterned-background preview in both modes. Updated the installed app.
+
+## Adaptive native backdrop default — October 28, 2026
+
+- Checked Apple's AppKit glass style API, SDK headers and material guidance. Public glass
+  styles are regular and clear; there is no public Notification Center backdrop preset.
+  NSBackgroundExtensionView extends in-window content around safe areas and is not a
+  desktop backdrop replacement. Retained the menu-bar placement and soft edge geometry.
+- System is now the default under Settings → Appearance. It uses native regular glass,
+  inherited appearance, nil tint and full material opacity so AppKit can adapt it. Custom
+  retains the previous clear-glass inversion and saved transparency slider. Switching modes
+  does not reset the saved custom transparency. Older macOS retains its standard-material
+  fallback; no private material/style values or compositor APIs were added.
+- Debug/review/release builds and native pane checks passed, including System/Custom mode
+  switching in light/dark, native appearance inheritance, nil tint/full opacity in System,
+  and opposite appearance in Custom. Visually inspected System mode over a detailed
+  two-window background. Updated and signature-verified the installed app.
+- UI automation could inspect a desktop calendar widget owned by Notification Center but
+  could not open the full system notification pane: the Fn modifier is unsupported by the
+  tool and system menu-bar app access timed out. No exact visual-match claim is made.
+  Attempts to inspect the new settings selector encountered stale/user-changed UI state;
+  the mode-switch behavior above was exercised by the native harness, not a live click test.
