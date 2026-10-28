@@ -363,9 +363,10 @@ private struct MotionFeedProbe: View {
     @ObservedObject var commands: NotificationCommandController
     let expansion: NotificationExpansionState
     var showsSearch = false
+    var usesInternalSearch = false
     var body: some View {
         NotificationFeed(notices: state.notices, commands: commands, maximumHeight: 460,
-                         search: $state.query, showsSearch: showsSearch, expansion: expansion)
+                         search: usesInternalSearch ? nil : $state.query, showsSearch: showsSearch, expansion: expansion)
             .frame(width: 340, height: 480, alignment: .top)
     }
 }
@@ -378,12 +379,41 @@ func runSearchMotionChecks() {
     }
     let commands = NotificationTestbed().commands
     let expansion = NotificationExpansionState()
-    let host = NSHostingView(rootView: MotionFeedProbe(state: state, commands: commands, expansion: expansion, showsSearch: true))
+    let host = NSHostingView(rootView: MotionFeedProbe(state: state, commands: commands, expansion: expansion, showsSearch: true, usesInternalSearch: true)
+        .background(Color.white).environment(\.colorScheme, .light))
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 340, height: 480),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentView = host
-    window.makeKeyAndOrderFront(nil)
+    window.orderFront(nil)
     func settle(_ duration: Double) { RunLoop.main.run(until: Date().addingTimeInterval(duration)) }
+    func render(_ name: String) -> NSBitmapImageRep {
+        let bitmap = host.bitmapImageRepForCachingDisplay(in: host.bounds)!
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        if CommandLine.arguments.contains("--render-search") {
+            try! bitmap.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: "/tmp/phone-check-search-\(name).png"))
+        }
+        return bitmap
+    }
+    // Measure visible ink in the outgoing card, over an opaque fixture background.
+    // A moving invisible native probe cannot satisfy this rendering assertion.
+    func ink(_ bitmap: NSBitmapImageRep, in rect: NSRect) -> Double {
+        let scaleX = CGFloat(bitmap.pixelsWide) / host.bounds.width
+        let scaleY = CGFloat(bitmap.pixelsHigh) / host.bounds.height
+        let top = host.isFlipped ? rect.minY : host.bounds.maxY - rect.maxY
+        let minX = max(0, Int(rect.minX * scaleX))
+        let maxX = min(bitmap.pixelsWide, Int(rect.maxX * scaleX))
+        let minY = max(0, Int(top * scaleY))
+        let maxY = min(bitmap.pixelsHigh, Int((top + rect.height) * scaleY))
+        var total = 0.0
+        for y in minY..<maxY {
+            for x in minX..<maxX {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else { continue }
+                total += 1 - (0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent)
+            }
+        }
+        return total
+    }
+
     func searchField(_ view: NSView) -> NSSearchField? {
         if let field = view as? NSSearchField { return field }
         return view.subviews.compactMap(searchField).first
@@ -398,18 +428,30 @@ func runSearchMotionChecks() {
     }!
     let document = row.enclosingScrollView!.documentView!
     let start = row.convert(row.bounds, to: document).minY
+    let outgoing = markers(host).min { left, right in
+        left.convert(left.bounds, to: host).minY < right.convert(right.bounds, to: host).minY
+    }!
+    let outgoingRect = outgoing.convert(outgoing.bounds, to: host).insetBy(dx: 10, dy: 6)
+    let initialInk = ink(render("before"), in: outgoingRect)
+    precondition(initialInk > 100, "The rendering fixture must contain visible outgoing card text")
+    var fadingInk: Double = 0
     let field = searchField(host)!
     window.makeFirstResponder(field)
     let editor = field.currentEditor() as! NSTextView
     editor.insertText("survivor", replacementRange: NSRange(location: 0, length: 0))
     var samples: [CGFloat] = []
-    for _ in 0..<15 {
+    for index in 0..<15 {
         settle(0.016)
         samples.append(row.convert(row.bounds, to: document).minY)
+        if index == 3 { fadingInk = ink(render("during"), in: outgoingRect) }
     }
     settle(0.4)
     let end = row.convert(row.bounds, to: document).minY
-    precondition(state.query == "survivor", "Native search editing must update the feed binding")
+    _ = render("after")
+    precondition(field.stringValue == "survivor", "Native search editing must update the field")
+    let remainingInk = fadingInk / initialInk
+    precondition(remainingInk > 0.1 && remainingInk < 0.95,
+                 "Outgoing rendered cards must fade, not disappear immediately (ink fraction \(remainingInk))")
     precondition(samples.contains { $0 > min(start, end) + 1 && $0 < max(start, end) - 1 },
                  "Search must animate surviving notification positions rather than snapping")
     editor.selectAll(nil)
@@ -420,10 +462,10 @@ func runSearchMotionChecks() {
         returningSamples.append(row.convert(row.bounds, to: document).minY)
     }
     settle(0.4)
-    precondition(state.query.isEmpty)
+    precondition(field.stringValue.isEmpty)
     precondition(returningSamples.contains { $0 > min(start, end) + 1 && $0 < max(start, end) - 1 },
                  "Clearing native search must animate notification cards back into position")
     precondition(abs(row.convert(row.bounds, to: document).minY - start) < 1)
     window.orderOut(nil)
-    print("Native search editing and clearing animate notification cards across the hosting boundary")
+    print("Rendered outgoing cards fade (ink fraction \(remainingInk)); native search and clearing slide surviving cards")
 }

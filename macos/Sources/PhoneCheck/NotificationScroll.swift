@@ -48,16 +48,32 @@ private final class NotificationScrollGeometry: ObservableObject {
     }
 }
 
+/// Keep one SwiftUI root alive for the lifetime of the scroll view. Replacing
+/// NSHostingView.rootView can replace rendered card surfaces while native
+/// descendants still report interpolated frames, concealing a transition reset.
+private final class NotificationHostedContent: ObservableObject {
+    @Published var view: AnyView
+    init(view: AnyView) { self.view = view }
+}
+
+private struct NotificationHostedRoot: View {
+    @ObservedObject var content: NotificationHostedContent
+    var body: some View { content.view }
+}
+
 /// The hosting view always receives the destination content size. A separate
 /// flipped document supplies the animated scroll extent. In particular, AppKit
 /// must never center an oversized hosting root inside a shorter animated frame.
 private final class NotificationDocumentView: NSView {
     let host: NSHostingView<AnyView>
+    let content: NotificationHostedContent
     var layoutHeight: CGFloat { didSet { layoutHost() } }
     override var isFlipped: Bool { true }
 
     init(root: AnyView, height: CGFloat) {
-        host = NSHostingView(rootView: root)
+        let content = NotificationHostedContent(view: root)
+        self.content = content
+        host = NSHostingView(rootView: AnyView(NotificationHostedRoot(content: content)))
         layoutHeight = max(1, height)
         super.init(frame: NSRect(x: 0, y: 0, width: 1, height: layoutHeight))
         host.sizingOptions = []
@@ -110,7 +126,7 @@ private struct NotificationScrollBridge<Content: View>: NSViewRepresentable {
     func updateNSView(_ scroll: NotificationOverlayScrollView, context: Context) {
         guard let document = scroll.documentView as? NotificationDocumentView else { return }
         withTransaction(context.transaction) {
-            document.host.rootView = hostedContent(context)
+            document.content.view = hostedContent(context)
             document.layoutHeight = max(1, contentHeight)
         }
     }

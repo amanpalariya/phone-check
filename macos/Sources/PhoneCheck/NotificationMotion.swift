@@ -6,7 +6,12 @@ import PhoneCheckCore
 /// that could replay stale presentation after a newer notification update.
 enum NotificationMotion {
     static func animation(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .smooth(duration: 0.28, extraBounce: 0)
+        #if PHONECHECK_VISUAL_TEST
+        let duration = CommandLine.arguments.contains("--slow-motion") ? 3.0 : 0.28
+        #else
+        let duration = 0.28
+        #endif
+        return reduceMotion ? nil : .smooth(duration: duration, extraBounce: 0)
     }
 
     static func transition(reduceMotion: Bool) -> AnyTransition {
