@@ -26,6 +26,10 @@ struct MaterialReview {
             return
         }
         app.setActivationPolicy(.regular)
+        if CommandLine.arguments.contains("--blur-review") || CommandLine.arguments.contains("--pane-blur-review") {
+            runBlurReview()
+            return
+        }
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 470),
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Phone Check — Material Review"
@@ -208,5 +212,75 @@ private struct RichReview: View {
         }
             .environment(\.appearsActive, true).environment(\.controlActiveState, .key)
             .frame(width: 340, height: 680)
+    }
+}
+
+
+// Separate windows are essential: the material must sample pixels BEHIND the window.
+private func runBlurReview() {
+    let backdrop = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 600),
+                            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+    backdrop.title = "Backdrop material comparison"
+    backdrop.contentView = BlurReviewPattern(frame: NSRect(x: 0, y: 0, width: 920, height: 600))
+    backdrop.center()
+    backdrop.makeKeyAndOrderFront(nil)
+    let frame = backdrop.convertToScreen(NSRect(x: 0, y: 0, width: 920, height: 600))
+    let samples = NotificationPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    samples.title = "Blur material samples"
+    samples.appearance = NSAppearance(named: CommandLine.arguments.contains("--dark") ? .darkAqua : .aqua)
+    samples.isOpaque = false
+    samples.backgroundColor = .clear
+    samples.hasShadow = false
+    let content = NSView(frame: NSRect(origin: .zero, size: frame.size))
+    let materials: [(String, NSVisualEffectView.Material)] = [
+        ("Sidebar", .sidebar), ("Under window", .underWindowBackground),
+        ("Glass regular", .hudWindow), ("Glass clear", .fullScreenUI)
+    ]
+    if CommandLine.arguments.contains("--pane-blur-review") {
+        let testbed = NotificationTestbed()
+        testbed.show(.text)
+        testbed.show(.messaging)
+        testbed.show(.group)
+        testbed.showsInPane = true
+        let surface = NotificationPaneSurface(frame: NSRect(x: 266, y: 10, width: 388, height: 580),
+            root: AnyView(CompanionView(model: Companion(startServices: false), testbed: testbed,
+                                       feedMaximumHeight: 390)
+                .padding(.top, 12).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)))
+        content.addSubview(surface)
+    } else {
+        for (index, sample) in materials.enumerated() {
+            let effect = NSVisualEffectView(frame: NSRect(x: 20 + index * 225, y: 70, width: 205, height: 430))
+            effect.material = sample.1
+            effect.blendingMode = .behindWindow
+            effect.state = .active
+            if #available(macOS 26.0, *), index >= 2 {
+                let glass = NSGlassEffectView(frame: effect.frame)
+                glass.style = index == 2 ? .regular : .clear
+                content.addSubview(glass)
+            } else {
+                content.addSubview(effect)
+            }
+            let label = NSTextField(labelWithString: sample.0)
+            label.font = .boldSystemFont(ofSize: 20)
+            label.frame = NSRect(x: 30 + index * 225, y: 520, width: 205, height: 30)
+            content.addSubview(label)
+        }
+    }
+    samples.contentView = content
+    backdrop.addChildWindow(samples, ordered: .above)
+    samples.makeKeyAndOrderFront(nil)
+    NSApp.activate(ignoringOtherApps: true)
+    withExtendedLifetime((backdrop, samples)) { NSApp.run() }
+}
+
+private final class BlurReviewPattern: NSView {
+    override func draw(_ dirtyRect: NSRect) {
+        NSGradient(starting: .systemBlue, ending: .systemOrange)!.draw(in: bounds, angle: 20)
+        for row in 0..<20 {
+            let y = CGFloat(row * 30)
+            let text = "Background detail · 0123456789 · sharp letters · "
+            (String(repeating: text, count: 4) as NSString).draw(at: NSPoint(x: 0, y: y),
+                withAttributes: [.font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.black])
+        }
     }
 }

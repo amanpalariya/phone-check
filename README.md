@@ -34,7 +34,7 @@ SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/build-macos.s
 
 Open `macos/Package.swift` in Xcode to edit the Mac sources. Launch the packaged `.app`, rather than the bare Swift executable, so notification authorization has a bundle identity. Distribution signing and notarization are not configured.
 
-Click the menu-bar icon to open a notification pane beneath the icon: separate glass cards over a softly fading desktop blur. Click the icon again, press Escape, or click outside to close it. Search, expanded groups and replies stay in the pane.
+Click the menu-bar icon to open a notification pane beneath the icon: separate glass cards over a softly fading desktop blur. Click the icon again, press Escape, or click outside to close it. Search, expanded groups and replies stay in the pane. Use **Settings → Appearance…** to adjust backdrop transparency live; your choice is saved.
 
 For local UI testing, open the Mac companion's settings menu and choose **Notification testbed…**.
 Add any of the 16 sample types, or choose **Show all**. Expand samples to try actions and replies;
@@ -48,6 +48,10 @@ The testbed uses the real notification views with simulated phone responses, wit
 ./tests/ui/build-mac-review.sh
 macos/build/PhoneCheckMaterialReview.app/Contents/MacOS/PhoneCheckMaterialReview --testbed-checks
 macos/build/PhoneCheckMaterialReview.app/Contents/MacOS/PhoneCheckMaterialReview --pane-checks
+# Compare native backdrop materials over a detailed background:
+open -n macos/build/PhoneCheckMaterialReview.app --args --blur-review
+# Actual pane over the same background (add --dark for dark appearance):
+open -n macos/build/PhoneCheckMaterialReview.app --args --pane-blur-review
 # Live panel preview with local samples:
 open -n macos/build/PhoneCheckMaterialReview.app --args --pane
 ```

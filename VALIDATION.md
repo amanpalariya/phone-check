@@ -171,3 +171,24 @@ Additional device checks:
   centering, vertical offset, both display edges, negative screen origins, constrained
   displays, provisional startup bounds, scrolling and existing panel interactions.
 - No live visual or paired-phone checks were performed for this placement adjustment.
+
+## Native blur and appearance settings — October 28, 2026
+
+- Reproduced the reported gray-sheet backdrop in the installed app. Added a live two-window
+  material comparison over colored, detailed text. On this Mac, the legacy sidebar and
+  under-window materials appeared solid; native `NSGlassEffectView` visibly blurred and
+  refracted the same background. Replaced the macOS 26+ backdrop with clear native glass,
+  retaining feathered edges and the regular-glass notification cards. Older macOS uses a
+  standard popover material fallback, which was source-reviewed but not run on an older OS.
+- Added **Settings → Appearance…** with a live 0–100% backdrop-transparency slider, saved in
+  UserDefaults. The default is 35%; 100% removes the backdrop. Card opacity is independent.
+  System Reduce Transparency takes priority. Reused the repository's ObservableObject state
+  pattern because this command-line SDK lacks the newer SwiftUI State macro plugin.
+- Debug/review/release builds and native pane checks passed. Visually verified the real pane
+  against patterned background windows in light and dark appearances, and clicked a card
+  expansion. Verified the settings sheet, live 35% → 75% adjustment, visible backdrop change,
+  Done dismissal, and saved value in the isolated visual-review app.
+- Updated and signature-verified `/Applications/Phone Check.app`. Opened its gear menu and
+  **Appearance…**, confirming the saved-preference control in the actual installed panel;
+  left Appearance open for the user. The paired phone reconnected and its notification
+  count resumed. No phone-side dismissal/reply commands were exercised in this change.

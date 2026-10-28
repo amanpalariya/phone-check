@@ -196,20 +196,32 @@ final class NotificationPanel: NSPanel {
 /// border, title bar or window shadow. Each notification supplies its own surface.
 final class NotificationPaneSurface: NSView {
     let host: NSHostingView<AnyView>
-    private let blur = NSVisualEffectView()
+    let backdrop: NSView
+    private let feather = CALayer()
+    private var appearanceSubscription: AnyCancellable?
+    private var accessibilitySubscription: AnyCancellable?
     override var acceptsFirstResponder: Bool { true }
 
     init(frame: NSRect, root: AnyView) {
         host = NSHostingView(rootView: root)
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.style = .clear
+            glass.cornerRadius = 0
+            backdrop = glass
+        } else {
+            let material = NSVisualEffectView()
+            material.material = .popover
+            material.blendingMode = .behindWindow
+            material.state = .active
+            backdrop = material
+        }
         super.init(frame: frame)
-        blur.material = .sidebar
-        blur.blendingMode = .behindWindow
-        blur.state = .active
-        blur.autoresizingMask = [.width, .height]
-        blur.frame = bounds
-        // Native alpha masking preserves behind-window sampling, unlike flattening
-        // the effect into a SwiftUI drawing group.
-        blur.maskImage = NSImage(size: NSSize(width: 128, height: 128), flipped: false) { rect in
+        backdrop.autoresizingMask = [.width, .height]
+        backdrop.frame = bounds
+        // Feather the actual backdrop, including its tint and edge highlights.
+        // A standalone gradient over the window would only fade a colored sheet.
+        let mask = NSImage(size: NSSize(width: 128, height: 128), flipped: false) { rect in
             NSGradient(colorsAndLocations: (NSColor.clear, 0), (NSColor.black, 0.08),
                        (NSColor.black, 0.92), (NSColor.clear, 1))!.draw(in: rect, angle: 0)
             let vertical = NSImage(size: rect.size, flipped: false) { bounds in
@@ -220,11 +232,38 @@ final class NotificationPaneSurface: NSView {
             vertical.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
             return true
         }
-        addSubview(blur)
+        if let material = backdrop as? NSVisualEffectView {
+            material.maskImage = mask
+        } else {
+            backdrop.wantsLayer = true
+            feather.contents = mask.cgImage(forProposedRect: nil, context: nil, hints: nil)
+            feather.frame = backdrop.bounds
+            backdrop.layer?.mask = feather
+        }
+        addSubview(backdrop)
         host.sizingOptions = []
         host.frame = bounds
         host.autoresizingMask = [.width, .height]
         addSubview(host)
+        appearanceSubscription = NotificationAppearance.shared.$transparency
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in self?.updateTransparency($0) }
+        accessibilitySubscription = NSWorkspace.shared.notificationCenter
+            .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
+            .sink { [weak self] _ in self?.updateTransparency(NotificationAppearance.shared.transparency) }
+        updateTransparency(NotificationAppearance.shared.transparency)
+    }
+
+    private func updateTransparency(_ value: Double) {
+        backdrop.alphaValue = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 1 - value
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        feather.frame = backdrop.bounds
+        CATransaction.commit()
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 }

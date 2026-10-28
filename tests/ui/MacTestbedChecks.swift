@@ -87,8 +87,13 @@ func runPaneChecks() {
     precondition(panel.isVisible && !panel.isOpaque && !panel.hasShadow)
     precondition(panel.styleMask.contains(.nonactivatingPanel) && !panel.styleMask.contains(.titled))
     let surface = panel.contentView as! NotificationPaneSurface
-    let blur = surface.subviews.compactMap { $0 as? NSVisualEffectView }.first!
-    precondition(blur.blendingMode == .behindWindow && blur.maskImage != nil)
+    if #available(macOS 26.0, *) {
+        let glass = surface.backdrop as! NSGlassEffectView
+        precondition(glass.style == .clear && glass.cornerRadius == 0 && glass.layer?.mask != nil)
+    } else {
+        let blur = surface.backdrop as! NSVisualEffectView
+        precondition(blur.blendingMode == .behindWindow && blur.maskImage != nil)
+    }
     precondition(surface.host.frame == surface.bounds, "Content must follow the anchored surface")
     func checkScroll(_ view: NSView) {
         if let scroll = view as? NotificationOverlayScrollView {
