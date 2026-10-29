@@ -218,26 +218,16 @@ func runPaneChecks() {
     precondition(panel.isVisible, "Native menu tracking must not dismiss the pane")
     NotificationCenter.default.post(name: NSMenu.didEndTrackingNotification, object: NSMenu())
     precondition(panel.contentView === surface, "Reopening must preserve presentation state")
-    controller.perform(NSSelectorFromString("toggle"))
-    settle()
-    precondition(!panel.isVisible, "Menu-bar toggle must close the pane")
-    checkHighlight(false, "button close")
-    controller.perform(NSSelectorFromString("toggle"))
-    settle()
-    precondition(panel.isVisible, "Menu-bar toggle must reopen the pane")
-    checkHighlight(true, "button reopen")
-    var cancelledBegins = 0
-    controller.beginExpandedInterface { cancelledBegins += 1 }
-    if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-        controller.beginExpandedInterface { cancelledBegins += 1 }
-        precondition(cancelledBegins == 2, "A begin callback during closing must cancel instead of reopening")
+    if #unavailable(macOS 27.0) {
+        statusButton.performClick(nil)
+        settle()
+        precondition(!panel.isVisible, "Menu-bar toggle must close the pane")
+        checkHighlight(false, "button close")
+        statusButton.performClick(nil)
+        settle()
+        precondition(panel.isVisible, "Menu-bar toggle must reopen the pane")
+        checkHighlight(true, "button reopen")
     }
-    NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
-    settle()
-    precondition(cancelledBegins > 0 && !panel.isVisible && panel.alphaValue == 1,
-                 "A repeated native begin must finish dismissing the window and reset its opacity")
-    controller.beginExpandedInterface { preconditionFailure("A new begin after dismissal must open") }
-    precondition(panel.isVisible)
     controller.hide()
     controller.show()
     settle()
@@ -250,10 +240,17 @@ func runPaneChecks() {
     }
     let buttonPoint = statusButton.convert(NSPoint(x: statusButton.bounds.midX, y: statusButton.bounds.midY), to: nil)
     NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: NSMenu())
-    precondition(controller.handleDismissalMouseDown(clickEvent(in: statusButton.window!, at: buttonPoint)),
-                 "A second status-item mouse-down must be consumed before native tracking can reopen the pane")
+    let consumedStatusClick = controller.handleDismissalMouseDown(clickEvent(in: statusButton.window!, at: buttonPoint))
+    if #available(macOS 27.0, *) {
+        precondition(!consumedStatusClick && panel.isVisible,
+                     "Status-item clicks must reach AppKit without cancelling its native session")
+        precondition(statusButton.action == nil, "Native sessions must own the status item without a custom toggle")
+        controller.hide()
+    } else {
+        precondition(consumedStatusClick, "Legacy closing clicks must not also activate the button")
+    }
     settle()
-    precondition(!panel.isVisible, "A second status-item click must hide the pane")
+    precondition(!panel.isVisible)
     NotificationCenter.default.post(name: NSMenu.didEndTrackingNotification, object: NSMenu())
     controller.show()
     surface.setContentHeight(120)

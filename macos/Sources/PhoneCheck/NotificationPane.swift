@@ -232,7 +232,8 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         guard presentation != .hidden, let panel, panel.attachedSheet == nil else { return false }
         if let button = statusItem.button, event.window === button.window,
            button.bounds.contains(button.convert(event.locationInWindow, from: nil)) {
-            // Cancel the native session before this click can begin another one.
+            // AppKit owns clicks during an expanded-interface session.
+            if #available(macOS 27.0, *) { return false }
             hide()
             return true
         }
@@ -246,17 +247,6 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         guard !trackingMenu else { return false }
         if event.window !== panel { hide() }
         return false
-    }
-
-    // A native begin callback can arrive after the click has already requested
-    // dismissal. Keep that same click from reopening a closing or visible pane.
-    func beginExpandedInterface(cancel: () -> Void) {
-        guard presentation == .hidden else {
-            closePane(animated: true)
-            cancel()
-            return
-        }
-        show()
     }
 
     private func removeMonitors() {
@@ -300,7 +290,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 @available(macOS 27.0, *)
 extension NotificationPaneController: NSStatusItemExpandedInterfaceDelegate {
     func statusItem(_ statusItem: NSStatusItem, didBegin session: NSStatusItemExpandedInterfaceSession) {
-        beginExpandedInterface { session.cancel() }
+        show()
     }
 
     func statusItemDidEndExpandedInterfaceSession(_ statusItem: NSStatusItem, animated: Bool) {
