@@ -209,6 +209,7 @@ func runPaneChecks() {
                                   windowNumber: panel.windowNumber, context: nil, characters: "\u{1b}",
                                   charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
     panel.sendEvent(escape)
+    settle()
     precondition(!panel.isVisible, "Escape must close the pane")
     checkHighlight(false, "Escape")
     controller.show()
@@ -224,7 +225,54 @@ func runPaneChecks() {
     controller.perform(NSSelectorFromString("toggle"))
     settle()
     precondition(panel.isVisible, "Menu-bar toggle must reopen the pane")
-    checkHighlight(true, "button reopen after tracking")
+    checkHighlight(true, "button reopen")
+    var cancelledBegins = 0
+    controller.beginExpandedInterface { cancelledBegins += 1 }
+    if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        controller.beginExpandedInterface { cancelledBegins += 1 }
+        precondition(cancelledBegins == 2, "A begin callback during closing must cancel instead of reopening")
+    }
+    NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+    settle()
+    precondition(cancelledBegins > 0 && !panel.isVisible && panel.alphaValue == 1,
+                 "A repeated native begin must finish dismissing the window and reset its opacity")
+    controller.beginExpandedInterface { preconditionFailure("A new begin after dismissal must open") }
+    precondition(panel.isVisible)
+    controller.hide()
+    controller.show()
+    settle()
+    precondition(panel.isVisible && panel.alphaValue == 1,
+                 "An old animation completion must not hide a newly shown pane")
+    func clickEvent(in window: NSWindow, at point: NSPoint) -> NSEvent {
+        NSEvent.mouseEvent(with: .leftMouseDown, location: point, modifierFlags: [], timestamp: 0,
+                           windowNumber: window.windowNumber, context: nil, eventNumber: 0,
+                           clickCount: 1, pressure: 1)!
+    }
+    let buttonPoint = statusButton.convert(NSPoint(x: statusButton.bounds.midX, y: statusButton.bounds.midY), to: nil)
+    NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: NSMenu())
+    precondition(controller.handleDismissalMouseDown(clickEvent(in: statusButton.window!, at: buttonPoint)),
+                 "A second status-item mouse-down must be consumed before native tracking can reopen the pane")
+    settle()
+    precondition(!panel.isVisible, "A second status-item click must hide the pane")
+    NotificationCenter.default.post(name: NSMenu.didEndTrackingNotification, object: NSMenu())
+    controller.show()
+    surface.setContentHeight(120)
+    let content = surface.contentFrame
+    precondition(content.width == NotificationPaneLayout.contentWidth && content.height == 120)
+    let inside = NSPoint(x: content.midX, y: content.midY)
+    precondition(!controller.handleDismissalMouseDown(clickEvent(in: panel, at: surface.convert(inside, to: nil))) && panel.isVisible,
+                 "Clicks inside visible content must reach its controls")
+    for point in [NSPoint(x: content.minX - 1, y: content.midY),
+                  NSPoint(x: content.maxX + 1, y: content.midY),
+                  NSPoint(x: content.midX, y: content.minY - 1),
+                  NSPoint(x: content.midX, y: surface.bounds.minY + 1)] {
+        precondition(controller.handleDismissalMouseDown(clickEvent(in: panel, at: surface.convert(point, to: nil))),
+                     "Side blur, bottom feather, and the unused window tail must dismiss the pane")
+        settle()
+        precondition(!panel.isVisible)
+        controller.show()
+        surface.setContentHeight(120)
+    }
     let other = NSWindow(contentRect: NSRect(x: 10, y: 10, width: 100, height: 100),
                          styleMask: [.titled], backing: .buffered, defer: false)
     other.makeKeyAndOrderFront(nil)
@@ -237,6 +285,7 @@ func runPaneChecks() {
     settle()
     precondition(panel.isVisible, "Banner actions must reveal the same pane")
     controller.hide()
+    settle()
     if (26...27).contains(ProcessInfo.processInfo.operatingSystemVersion.majorVersion),
        !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
         let probe = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
@@ -252,7 +301,7 @@ func runPaneChecks() {
                      "The backdrop must remain available when attached beneath another view")
         probe.orderOut(nil)
     }
-    print("Floating pane geometry, native blur, scrolling, Escape, menu toggle, focus dismissal and reopening checks passed")
+    print("Pane geometry, blur, scrolling, animated dismissal, content hit regions, menu toggle, and reopening checks passed")
 }
 
 private final class MotionProbeState: ObservableObject {

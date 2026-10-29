@@ -50,7 +50,7 @@ struct CompanionView: View {
                     .padding(.bottom, 10)
             }
         }
-        .frame(width: 340)
+        .frame(width: NotificationPaneLayout.contentWidth)
         .background {
             GeometryReader { proxy in
                 AnimatedCompanionHeight(height: proxy.size.height)

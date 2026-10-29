@@ -6,6 +6,8 @@ import PhoneCheckCore
 /// Own the menu-bar entry and a borderless surface, rather than an NSPopover.
 /// Notification state and command confirmation remain in the existing models.
 final class NotificationPaneController: NSObject, NSWindowDelegate {
+    private enum Presentation { case hidden, visible, closing }
+
     private let model: Companion
     private let testbed: NotificationTestbed
     private let statusItem: NSStatusItem
@@ -16,6 +18,8 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private var outsideMonitor: Any?
     private var localMonitor: Any?
     private var trackingMenu = false
+    private var presentation = Presentation.hidden
+    private var presentationRevision = 0
 #if PHONECHECK_VISUAL_TEST
     var statusButtonForChecks: NSStatusBarButton { statusItem.button! }
 #endif
@@ -46,7 +50,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
             .store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
             .sink { [weak self] _ in
-                guard let self, panel?.isVisible == true else { return }
+                guard let self, presentation == .visible else { return }
                 show()
             }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSMenu.didBeginTrackingNotification)
@@ -91,14 +95,14 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     }
 
     @objc private func toggle() {
-        if panel?.isVisible == true { hide() } else { show() }
+        switch presentation {
+        case .hidden: show()
+        case .visible: hide()
+        case .closing: break
+        }
     }
 
     func show() {
-        presentPane()
-    }
-
-    private func presentPane() {
         guard let screen = statusItem.button?.window?.screen ?? NSScreen.main else { return }
         let anchor = statusItem.button.flatMap { button in
             button.window?.convertToScreen(button.convert(button.bounds, to: nil))
@@ -130,6 +134,9 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
             panel.contentView = NotificationPaneSurface(frame: NSRect(origin: .zero, size: frame.size),
                                                        root: root(height: frame.height, pointerOffset: (anchor?.midX ?? frame.midX) - frame.midX))
         }
+        presentationRevision += 1
+        presentation = .visible
+        panel.alphaValue = 1
         panel.makeKeyAndOrderFront(nil)
         updateStatusHighlight()
         // Start with no search focus; Tab and clicking still enter native editors.
@@ -141,11 +148,8 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         // Modern AppKit owns the menu-bar selection through its session.
         if #available(macOS 27.0, *) { return }
         statusItem.button?.highlight(panel?.isVisible == true)
-        // NSStatusBarButton renders its menu-bar background from highlight(),
-        // not state. AppKit clears highlighting when mouse tracking ends, so
-        // restore it after the click action has returned.
-        // Use the default run-loop mode: a main-queue block can run inside
-        // AppKit's nested mouse-tracking loop, before it clears the highlight.
+        // Restore the legacy highlight after AppKit's mouse-tracking loop ends.
+        // Main-queue blocks can run inside that loop; default-mode work cannot.
         RunLoop.main.perform(inModes: [.default]) { [weak self] in
             guard let self else { return }
             statusItem.button?.highlight(self.panel?.isVisible == true)
@@ -165,18 +169,40 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     }
 
     func hide() {
-        closePane()
+        closePane(animated: true)
         if #available(macOS 27.0, *) { statusItem.expandedInterfaceSession?.cancel() }
     }
 
-    private func closePane() {
-        panel?.orderOut(nil)
-        updateStatusHighlight()
-        removeMonitors()
+    private func closePane(animated: Bool) {
+        guard presentation == .visible, let panel else { return }
+        presentation = .closing
+        presentationRevision += 1
+        let revision = presentationRevision
+        let finish = { [weak self, weak panel] in
+            // A later show invalidates this close's animation completion.
+            guard let self, self.presentationRevision == revision, self.presentation == .closing else { return }
+            panel?.orderOut(nil)
+            panel?.alphaValue = 1
+            self.presentation = .hidden
+            self.updateStatusHighlight()
+            self.removeMonitors()
+        }
+        guard animated, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            finish()
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 0
+        } completionHandler: {
+            finish()
+        }
     }
 
     func windowDidResignKey(_ notification: Notification) {
-        guard (notification.object as? NSWindow) === panel, panel?.attachedSheet == nil, !trackingMenu else { return }
+        guard presentation == .visible, (notification.object as? NSWindow) === panel,
+              panel?.attachedSheet == nil, !trackingMenu else { return }
         // Clicking the status button may resign key before its action runs.
         // Let that action own the toggle instead of closing and then reopening.
         if NSEvent.pressedMouseButtons != 0 && statusButtonContainsMouse { return }
@@ -197,11 +223,40 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             guard let self else { return event }
-            if event.window !== panel && event.window !== statusItem.button?.window && panel?.attachedSheet == nil && !trackingMenu {
-                hide()
-            }
-            return event
+            return handleDismissalMouseDown(event) ? nil : event
         }
+    }
+
+    /// Return true when the click dismisses our UI and must not also activate it.
+    func handleDismissalMouseDown(_ event: NSEvent) -> Bool {
+        guard presentation != .hidden, let panel, panel.attachedSheet == nil else { return false }
+        if let button = statusItem.button, event.window === button.window,
+           button.bounds.contains(button.convert(event.locationInWindow, from: nil)) {
+            // Cancel the native session before this click can begin another one.
+            hide()
+            return true
+        }
+        if event.window === panel, let surface = panel.contentView as? NotificationPaneSurface {
+            let point = surface.convert(event.locationInWindow, from: nil)
+            guard !surface.contentFrame.contains(point) else { return false }
+            // Feathered blur and unused window space are outside the cards.
+            hide()
+            return true
+        }
+        guard !trackingMenu else { return false }
+        if event.window !== panel { hide() }
+        return false
+    }
+
+    // A native begin callback can arrive after the click has already requested
+    // dismissal. Keep that same click from reopening a closing or visible pane.
+    func beginExpandedInterface(cancel: () -> Void) {
+        guard presentation == .hidden else {
+            closePane(animated: true)
+            cancel()
+            return
+        }
+        show()
     }
 
     private func removeMonitors() {
@@ -245,16 +300,17 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 @available(macOS 27.0, *)
 extension NotificationPaneController: NSStatusItemExpandedInterfaceDelegate {
     func statusItem(_ statusItem: NSStatusItem, didBegin session: NSStatusItemExpandedInterfaceSession) {
-        presentPane()
+        beginExpandedInterface { session.cancel() }
     }
 
     func statusItemDidEndExpandedInterfaceSession(_ statusItem: NSStatusItem, animated: Bool) {
-        closePane()
+        closePane(animated: animated)
     }
 }
 
 /// Screen coordinates include negative origins on secondary displays.
 enum NotificationPaneLayout {
+    static let contentWidth: CGFloat = 340
     static let contentTopInset: CGFloat = 2
     static func frame(in visibleFrame: NSRect, anchor: NSRect?) -> NSRect {
         // Before AppKit lays out the status item, its window can still be at (0, 0).
@@ -316,6 +372,12 @@ final class NotificationPaneSurface: NSView {
     }
 #endif
     private var contentHeight: CGFloat = 240
+    var contentFrame: NSRect {
+        let width = min(NotificationPaneLayout.contentWidth, bounds.width)
+        let top = bounds.maxY - NotificationPaneLayout.contentTopInset
+        let height = min(contentHeight, max(0, top - bounds.minY))
+        return NSRect(x: bounds.midX - width / 2, y: top - height, width: width, height: height)
+    }
     private var maskTemplateSize = NSSize.zero
     private var accessibilitySubscription: AnyCancellable?
     override var acceptsFirstResponder: Bool { true }
