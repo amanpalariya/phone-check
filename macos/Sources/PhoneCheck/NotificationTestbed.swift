@@ -1,3 +1,4 @@
+#if DEBUG
 import SwiftUI
 import PhoneCheckCore
 
@@ -135,3 +136,5 @@ struct NotificationTestbedView: View {
         #endif
     }
 }
+
+#endif

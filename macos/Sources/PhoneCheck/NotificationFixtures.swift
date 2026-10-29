@@ -1,3 +1,4 @@
+#if DEBUG
 import AppKit
 import PhoneCheckCore
 
@@ -140,3 +141,5 @@ enum NotificationFixtures {
         return bitmap.representation(using: picture ? .jpeg : .png, properties: [.compressionFactor: 0.75])?.base64EncodedString()
     }
 }
+
+#endif

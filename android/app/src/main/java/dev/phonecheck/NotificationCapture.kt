@@ -27,7 +27,7 @@ internal class NotificationCapture(private val context: Context) {
     fun current(key: String) = captured[key]
 
     fun capture(sbn: StatusBarNotification): CapturedNotice? {
-        if (sbn.packageName == context.packageName && sbn.tag != TestNotifications.TAG && sbn.id != DemoScenario.CALL.number) return null
+        if (sbn.packageName == context.packageName && !DevelopmentFeatures.capturesOwnNotification(sbn)) return null
         return try { extract(sbn) } catch (_: Exception) {
             val json = JSONObject().put("key", sbn.key).put("app", sbn.packageName).put("title", "Notification")
                 .put("body", "").put("postedAt", sbn.postTime).put("dismissible", sbn.isClearable).put("kind", "custom")
@@ -37,7 +37,7 @@ internal class NotificationCapture(private val context: Context) {
         }
     }
     private fun extract(sbn: StatusBarNotification): CapturedNotice? {
-        if (sbn.packageName == context.packageName && sbn.tag != TestNotifications.TAG && sbn.id != DemoScenario.CALL.number) return null
+        if (sbn.packageName == context.packageName && !DevelopmentFeatures.capturesOwnNotification(sbn)) return null
         val n = sbn.notification
         val extras = n.extras
         val previous = captured[sbn.key]

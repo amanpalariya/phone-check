@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
                         android.service.notification.NotificationListenerService.requestRebind(
                             ComponentName(this, NotificationBridge::class.java))
                     },
-                    onTestbed = { startActivity(Intent(this, NotificationTestbedActivity::class.java)) },
+                    onTestbed = { DevelopmentFeatures.openTestbed(this) },
                     onUnpair = {
                         runCatching { PairingStore(this).clear() }.onSuccess {
                             BridgeState.paired = false; BridgeState.service?.restart()

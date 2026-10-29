@@ -1,7 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CONFIGURATION="${CONFIGURATION:-release}"
+CONFIGURATION="${CONFIGURATION:-debug}"
+case "$CONFIGURATION" in
+    debug|release) ;;
+    *) echo "CONFIGURATION must be debug or release" >&2; exit 1 ;;
+esac
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
 MINIMUM_MACOS="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$ROOT/macos/Info.plist")"

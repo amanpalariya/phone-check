@@ -16,7 +16,7 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
     private var pane: NotificationPaneController?
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = Companion()
-        let controller = NotificationPaneController(model: model, testbed: NotificationTestbed())
+        let controller = NotificationPaneController(model: model)
         pane = controller
         if !model.paired { controller.showSettings() }
     }
@@ -33,7 +33,9 @@ private final class CompanionPresentation: ObservableObject {
 
 struct CompanionView: View {
     @ObservedObject var model: Companion
+    #if DEBUG
     @ObservedObject var testbed = NotificationTestbed()
+    #endif
     var showSettings: () -> Void = {}
     var pointerOffset: CGFloat = 0
     var feedMaximumHeight: CGFloat = 480
@@ -42,10 +44,8 @@ struct CompanionView: View {
     var body: some View {
         VStack(spacing: 0) {
             controlsCard
-            if testbed.showsInPane && !testbed.notices.isEmpty {
-                testbedContent
-            } else if !testbed.showsInPane && model.paired && model.connected && !model.notices.isEmpty {
-                NotificationFeed(notices: model.notices, commands: model.commands, maximumHeight: feedMaximumHeight,
+            if (showsSamples || (model.paired && model.connected)) && !displayedNotices.isEmpty {
+                NotificationFeed(notices: displayedNotices, commands: displayedCommands, maximumHeight: feedMaximumHeight,
                                  search: $presentation.query, showsSearch: false)
                     .padding(.bottom, 10)
             }
@@ -59,16 +59,17 @@ struct CompanionView: View {
         }
         .onPreferenceChange(CompanionHeight.self, perform: contentHeightChanged)
         .notificationMotion(value: model.notices)
-        .notificationMotion(value: testbed.notices)
+        .notificationMotion(value: displayedNotices)
         .tint(.accentColor)
         .onAppear { model.refreshAuthorization() }
-        .onChange(of: testbed.showsInPane) { _, _ in presentation.query = "" }
+        .onChange(of: showsSamples) { _, _ in presentation.query = "" }
     }
 
     private var controlsCard: some View {
         VStack(spacing: 0) {
             header
-            if testbed.showsInPane {
+            #if DEBUG
+            if showsSamples {
                 HStack {
                     Text("Testbed").font(.caption).foregroundStyle(.secondary)
                     Spacer()
@@ -77,12 +78,13 @@ struct CompanionView: View {
                     }.buttonStyle(.borderless).tint(.primary)
                 }.padding(.horizontal, 16).padding(.bottom, 8)
             }
+            #endif
             if showsSearch {
                 NotificationSearchField(text: $presentation.query)
                     .padding(.horizontal, 12).padding(.bottom, 12)
             }
-            if testbed.showsInPane {
-                if testbed.notices.isEmpty {
+            if showsSamples {
+                if displayedNotices.isEmpty {
                     Text("Add samples in the testbed.").foregroundStyle(.secondary).padding(24)
                 }
             } else {
@@ -105,15 +107,30 @@ struct CompanionView: View {
         .padding(.horizontal, 10)
     }
 
-    private var showsSearch: Bool {
-        let notices = testbed.showsInPane ? testbed.notices : model.notices
-        return !notices.isEmpty || !presentation.query.isEmpty
+    private var showsSamples: Bool {
+        #if DEBUG
+        return testbed.showsInPane
+        #else
+        return false
+        #endif
     }
 
-    private var testbedContent: some View {
-        NotificationFeed(notices: testbed.notices, commands: testbed.commands, maximumHeight: feedMaximumHeight,
-                         search: $presentation.query, showsSearch: false)
-            .padding(.bottom, 10)
+    private var displayedNotices: [Notice] {
+        #if DEBUG
+        if showsSamples { return testbed.notices }
+        #endif
+        return model.notices
+    }
+
+    private var displayedCommands: NotificationCommandController {
+        #if DEBUG
+        if showsSamples { return testbed.commands }
+        #endif
+        return model.commands
+    }
+
+    private var showsSearch: Bool {
+        !displayedNotices.isEmpty || !presentation.query.isEmpty
     }
 
     private var header: some View {
@@ -134,15 +151,15 @@ struct CompanionView: View {
             Text("Phone Check").font(.headline)
             Spacer(minLength: 0)
             HStack(spacing: 6) {
-                if testbed.showsInPane || model.connected {
-                    let count = testbed.showsInPane ? NotificationSection.count(testbed.notices) : model.notificationCount
+                if showsSamples || model.connected {
+                    let count = showsSamples ? NotificationSection.count(displayedNotices) : model.notificationCount
                     Text("\(count)").font(.caption).monospacedDigit()
                         .accessibilityLabel("\(count) notifications")
                 }
-                Circle().fill(testbed.showsInPane ? Color.orange : model.connected ? Color.green : Color.secondary)
+                Circle().fill(showsSamples ? Color.orange : model.connected ? Color.green : Color.secondary)
                     .frame(width: 6, height: 6)
-                    .help(testbed.showsInPane ? "Testbed" : model.status)
-                    .accessibilityLabel(testbed.showsInPane ? "Testbed" : model.status)
+                    .help(showsSamples ? "Testbed" : model.status)
+                    .accessibilityLabel(showsSamples ? "Testbed" : model.status)
             }.frame(minWidth: 28, minHeight: 28)
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)

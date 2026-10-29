@@ -5,7 +5,7 @@ import UserNotifications
 import PhoneCheckCore
 
 // Compiled with the production Companion, Credentials, Transport, and PhoneCheckCore.
-// A different bundle identifier isolates Keychain items and OS notifications from the app.
+// A different bundle identifier isolates development pairing storage and OS notifications from the app.
 @main
 struct MacHost {
     static func main() throws {

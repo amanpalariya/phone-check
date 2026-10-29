@@ -1,5 +1,13 @@
 # Validation — October 27, 2026
 
+## Development and release separation — October 29, 2026
+
+- Built and ad hoc signed both Mac configurations; left `macos/build/Phone Check.app` as development and copied it to `/Applications/Phone Check.app`; verified its signature and launched it. Verified the development executable has no Keychain item API references; release retains Keychain item APIs and contains no testbed/fixture symbols.
+- `tests/ui/check-credentials.sh` passed: separate-process persistence, replacement, 0700 directory/0600 file modes, corrupt-data rejection, idempotent removal, and write-error propagation. Uses a unique test bundle identity and cleans up its pairing file.
+- Mac core checks passed (10 core checks and 6 Firebase/attention groups). Existing Mac testbed and pane checks passed, including simulated actions/replies/removals and pane geometry/interaction.
+- Android debug/release APK builds, debug unit tests, and lint for both variants passed. Inspected both APK DEX files and merged manifests: testbed classes/components occur only in debug. Bare Gradle dry-run selects `:app:assembleDebug`.
+- Rebuilt the Mac emulator host with development credential storage. Physical-phone pairing, repeated installs/relaunches, and device notification flows were not rerun for this change; earlier device results below are historical.
+
 ## Run on this Mac
 
 | Check | Result |

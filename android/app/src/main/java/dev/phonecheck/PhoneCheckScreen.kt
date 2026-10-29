@@ -180,12 +180,14 @@ private fun PhoneSettingsScreen(
                 Text(if (advanced) "Advanced" else "Settings", style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(start = 12.dp))
             }
-            if (advanced) {
+            if (advanced && DevelopmentFeatures.enabled) {
                 ListItem(headlineContent = { Text("Notification testbed") },
                     modifier = Modifier.clickable(onClick = onTestbed))
             } else {
-                ListItem(headlineContent = { Text("Advanced") },
-                    modifier = Modifier.clickable(onClick = onAdvanced))
+                if (DevelopmentFeatures.enabled) {
+                    ListItem(headlineContent = { Text("Advanced") },
+                        modifier = Modifier.clickable(onClick = onAdvanced))
+                }
                 if (paired) {
                     ListItem(headlineContent = { Text("Unpair Mac") },
                         modifier = Modifier.clickable(onClick = onUnpair))

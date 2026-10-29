@@ -8,9 +8,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/macos/Resources/PhoneCheck.icns" "$APP/Contents/Resources/PhoneCheck.icns"
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 SDK_VERSION="$(xcrun --sdk macosx --show-sdk-version)"
-# Match the installed app's optimizer and linked SDK: otherwise AppKit can use
+# Exercise optimized development features with the current linked SDK; AppKit can use
 # compatibility rendering that conceals native material/animation regressions.
-swiftc -O -parse-as-library -swift-version 5 -D PHONECHECK_VISUAL_TEST -sdk "$SDK_PATH" -target "$(uname -m)-apple-macos14.0" \
+swiftc -D DEBUG -O -parse-as-library -swift-version 5 -D PHONECHECK_VISUAL_TEST -sdk "$SDK_PATH" -target "$(uname -m)-apple-macos14.0" \
     -I "$BIN" "$BIN/PhoneCheckCore.o" \
     "$ROOT"/macos/Sources/PhoneCheck/*.swift "$ROOT/tests/ui/MacMaterialReview.swift" "$ROOT/tests/ui/MacTestbedChecks.swift" \
     -Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$SDK_VERSION" \

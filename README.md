@@ -26,7 +26,21 @@ For macOS, install Xcode or its command-line tools:
 open "macos/build/Phone Check.app"
 ```
 
-The script makes an ad hoc signed local build. For reliable macOS local-network privacy identity and Keychain access across rebuilds, use an Apple-issued identity:
+Both platforms default to **development** (`debug`): Android Studio's debug variant, bare `./gradlew` in `android/`, and the Mac build script. Development builds include the notification testbed and Advanced settings. Release builds exclude the testbed, its fixtures, and its Advanced settings entry.
+
+Mac development pairing is stored as unencrypted JSON in `~/Library/Application Support/dev.phonecheck.mac.pairing.development/pairing.json`, inside an owner-only directory (0700) with an owner-only file (0600). It survives rebuilding/re-signing without any Keychain access. Unpair removes it. Development never reads, migrates, or clears release Keychain credentials, so switching build configurations requires pairing separately. Android continues using Keystore-encrypted private preferences in both variants.
+
+Build a release explicitly:
+
+```sh
+CONFIGURATION=release ./scripts/build-macos.sh
+cd android
+./gradlew :app:assembleRelease
+```
+
+The Mac script writes either configuration to `macos/build/Phone Check.app`; rebuild with no configuration to return to development. Android release output is `android/app/build/outputs/apk/release/app-release-unsigned.apk`; release signing is not configured.
+
+The Mac script makes an ad hoc signed local build. For a stable macOS local-network privacy identity, or reliable release Keychain access across rebuilds, use an Apple-issued identity:
 
 ```sh
 SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/build-macos.sh
@@ -36,7 +50,7 @@ Open `macos/Package.swift` in Xcode to edit the Mac sources. Launch the packaged
 
 Click the menu-bar icon to open a notification pane beneath the icon: separate glass cards over a softly fading desktop blur. Click the icon again, press Escape, or click outside to close it. Search, expanded groups and replies stay in the pane. The title and search share a notification-style card near the menu bar. The backdrop uses a blur-only compositor renderer with a standard-material fallback; Liquid Glass is reserved for the cards. The soft backdrop follows the visible content and stays dark in both light and dark mode. A bottom fade signals more notifications below and disappears at the end. Blur and backdrop strength use fixed defaults without appearance controls. The blur-only path uses undocumented macOS compositor APIs on supported OS generations.
 
-For local UI testing, open **Settings → Advanced → Notification testbed → Open…** on the Mac.
+In a development build, open **Settings → Advanced → Notification testbed → Open…** on the Mac.
 Add any of the 16 sample types, or choose **Show all**. Expand samples to try actions and replies;
 use **Update last**, **Remove last**, and **Action result** to exercise updates, removals, and failures.
 Enable **Show in notification pane**, then click Phone Check in the menu bar to view and interact with
@@ -62,9 +76,10 @@ Add `--single` (without `--more`) to check short-list alignment, or `--no-backdr
 
 For backdrop review, keep one preview instance open and inspect a composed-screen capture using macOS Screenshot. Window-only captures omit the content behind the panel. Scrolling over exposed backdrop must leave the underlying pattern's scroll position unchanged; the notification list must still scroll normally. The scroll fixture records its underlying offset in `/tmp/phonecheck-behind-scroll-offset`.
 
-Core checks run without XCTest or a full Xcode install:
+Development credential storage and core checks run without XCTest or a full Xcode install:
 
 ```sh
+./tests/ui/check-credentials.sh
 swift run --package-path macos PhoneCheckChecks
 ```
 
@@ -77,7 +92,7 @@ swiftc -parse-as-library macos/Sources/PhoneCheck/PairingQRCode.swift tests/ui/P
 
 ## Pair
 
-1. Open **Settings…** from the Mac companion’s gear menu (or press **⌘,**) and choose **Pair phone** in the Phone tab. Settings shows the paired phone, connection status, and **Unpair…**; the Advanced tab contains the notification testbed.
+1. Open **Settings…** from the Mac companion’s gear menu (or press **⌘,**) and choose **Pair phone** in the Phone tab. Settings shows the paired phone, connection status, and **Unpair…**; development builds also have an Advanced tab with the notification testbed.
 2. Tap **Scan QR code** in the Android app and scan the Mac’s QR code within five minutes. Or choose **Enter code instead** on Android and **Copy code** on Mac. Both devices must be on the same private IPv4 LAN; choose the Mac's Wi-Fi address if several addresses appear. Guest Wi-Fi client isolation can prevent connections.
 3. Grant Android notification access and, on Android 17+, local network access. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
 4. Enable Mac notifications in the companion. Allow local network access if macOS asks.
@@ -90,7 +105,7 @@ Unpair on both devices to replace a phone, replace a Mac, or change a Mac addres
 
 ## Notification testbed
 
-Open Android **Settings → Advanced → Notification testbed**. Post samples individually or together; use **Update** for progress and **Clear** to remove samples. Receipts show actual Android action execution, taps, replies, and removals.
+In an Android development build, open **Settings → Advanced → Notification testbed**. Post samples individually or together; use **Update** for progress and **Clear** to remove samples. Receipts show actual Android action execution, taps, replies, and removals.
 
 Twenty scenarios cover text, expanded text, inbox, conversations, pictures, progress, groups, ongoing, buttons, media, calls, silent/private content, custom layouts, canceled intents, unlock-required actions, fixed choices, attachment-only and multiple-input actions. These are real Android notifications, including a short-lived foreground service for the call sample.
 
@@ -104,6 +119,6 @@ Android's bridge coordinates capture, asset conversion, command handling and a t
 
 ## Verification
 
-Run the [emulator integration suite](tests/emulator/README.md) to exercise the real Android listener against the Mac companion code. See [VALIDATION.md](VALIDATION.md) for checks actually run and the remaining physical-device checklist. Active notification text is kept in memory only; pairing material lives in macOS Keychain and Android Keystore-encrypted private preferences. Android backup and transfer exclude those preferences. No notification bodies or credentials are logged.
+Run the [emulator integration suite](tests/emulator/README.md) to exercise the real Android listener against the Mac companion code. See [VALIDATION.md](VALIDATION.md) for checks actually run and the remaining physical-device checklist. Active notification text is kept in memory only; pairing material lives in macOS Keychain for release builds, the owner-only local file described above for Mac development builds, and Android Keystore-encrypted private preferences. Android backup and transfer exclude those preferences. No notification bodies or credentials are logged.
 
 Build versions were checked against official SDK and Maven metadata on October 27, 2026. The checked-in Gradle wrapper pins the distribution checksum. See [Android build compatibility](https://developer.android.com/build/releases/gradle-plugin), [Compose BOM](https://developer.android.com/develop/ui/compose/bom), [local network permission](https://developer.android.com/privacy-and-security/local-network-permission), and [Apple local network privacy](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy).

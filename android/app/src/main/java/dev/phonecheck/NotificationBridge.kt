@@ -150,8 +150,8 @@ class NotificationBridge : NotificationListenerService() {
         inSession {
             if (!ready) return@inSession
             active.remove(sbn.key); capture.remove(sbn.key)
-            if (sbn.packageName == packageName && (sbn.tag == TestNotifications.TAG || sbn.id == DemoScenario.CALL.number)) {
-                main.post { TestbedState.record("removed") }
+            if (sbn.packageName == packageName) {
+                main.post { DevelopmentFeatures.notificationRemoved(sbn) }
             }
             if (snapshotSent) send(JSONObject().put("type", "remove").put("key", sbn.key))
             commands.onRemoved(sbn.key)

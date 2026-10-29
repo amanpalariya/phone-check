@@ -7,7 +7,7 @@ APP="$ROOT/macos/build/PhoneCheckE2E.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$ROOT/macos/Resources/PhoneCheck.icns" "$APP/Contents/Resources/PhoneCheck.icns"
 ARCH="$(uname -m)"
-swiftc -parse-as-library -swift-version 5 -target "$ARCH-apple-macos14.0" \
+swiftc -D DEBUG -parse-as-library -swift-version 5 -target "$ARCH-apple-macos14.0" \
     -I "$BIN" "$BIN/PhoneCheckCore.o" \
     "$ROOT/macos/Sources/PhoneCheck/Companion.swift" \
     "$ROOT/macos/Sources/PhoneCheck/NotificationAlerts.swift" \

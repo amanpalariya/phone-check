@@ -9,10 +9,14 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private enum Presentation { case hidden, visible, closing }
 
     private let model: Companion
+    #if DEBUG
     private let testbed: NotificationTestbed
+    #endif
     private let statusItem: NSStatusItem
     private var panel: NotificationPanel?
+    #if DEBUG
     private var testbedWindow: NSWindow?
+    #endif
     private var settingsController: CompanionSettingsController?
     private var subscriptions = Set<AnyCancellable>()
     private var outsideMonitor: Any?
@@ -24,11 +28,24 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     var statusButtonForChecks: NSStatusBarButton { statusItem.button! }
 #endif
 
-    init(model: Companion, testbed: NotificationTestbed) {
+    #if DEBUG
+    init(model: Companion, testbed: NotificationTestbed = NotificationTestbed()) {
         self.model = model
         self.testbed = testbed
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
+        configure()
+    }
+    #else
+    init(model: Companion) {
+        self.model = model
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        super.init()
+        configure()
+    }
+    #endif
+
+    private func configure() {
         if let button = statusItem.button {
             if #available(macOS 27.0, *) {
                 statusItem.expandedInterfaceDelegate = self
@@ -40,7 +57,12 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
             button.imagePosition = .imageLeading
             button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         }
-        Publishers.Merge(model.objectWillChange, testbed.objectWillChange)
+        #if DEBUG
+        let changes = Publishers.Merge(model.objectWillChange, testbed.objectWillChange).eraseToAnyPublisher()
+        #else
+        let changes = model.objectWillChange.eraseToAnyPublisher()
+        #endif
+        changes
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.updateStatusItem() }
             .store(in: &subscriptions)
@@ -85,12 +107,22 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 
     private func updateStatusItem() {
         guard let button = statusItem.button else { return }
-        let samples = testbed.showsInPane
-        let count = samples ? NotificationSection.count(testbed.notices) : model.notificationCount
-        button.image = NSImage(systemSymbolName: samples ? "testtube.2" : "iphone", accessibilityDescription: nil)
+        var count = model.notificationCount
+        var symbol = "iphone"
+        var status = model.status
+        var showsCount = model.connected
+        #if DEBUG
+        if testbed.showsInPane {
+            count = NotificationSection.count(testbed.notices)
+            symbol = "testtube.2"
+            status = "Testbed"
+            showsCount = true
+        }
+        #endif
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
         button.image?.isTemplate = true
-        button.title = samples || model.connected ? " \(count)" : ""
-        button.setAccessibilityLabel("Phone Check, \(samples ? "Testbed" : model.status), \(count) notifications")
+        button.title = showsCount ? " \(count)" : ""
+        button.setAccessibilityLabel("Phone Check, \(status), \(count) notifications")
         button.toolTip = "Phone Check"
     }
 
@@ -157,13 +189,17 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     }
 
     private func root(height: CGFloat, pointerOffset: CGFloat) -> AnyView {
-        AnyView(CompanionView(model: model, testbed: testbed,
+        var view = CompanionView(model: model,
                               showSettings: { [weak self] in self?.showSettings() },
                               pointerOffset: pointerOffset,
                               feedMaximumHeight: max(60, height - 220),
                               contentHeightChanged: { [weak self] height in
                                   (self?.panel?.contentView as? NotificationPaneSurface)?.setContentHeight(height)
                               })
+        #if DEBUG
+        view.testbed = testbed
+        #endif
+        return AnyView(view
             .padding(.top, NotificationPaneLayout.contentTopInset)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top))
     }
@@ -258,13 +294,18 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     @objc func showSettings() {
         hide()
         if settingsController == nil {
+            #if DEBUG
             settingsController = CompanionSettingsController(model: model, showTestbed: { [weak self] in
                 self?.showTestbed()
             })
+            #else
+            settingsController = CompanionSettingsController(model: model)
+            #endif
         }
         settingsController?.show()
     }
 
+    #if DEBUG
     private func showTestbed() {
         hide()
         if testbedWindow == nil {
@@ -279,6 +320,8 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         testbedWindow?.makeKeyAndOrderFront(nil)
     }
+
+    #endif
 
     deinit {
         if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }

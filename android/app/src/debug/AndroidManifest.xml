@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <application>
+        <activity android:name=".NotificationTestbedActivity" android:exported="false" android:launchMode="singleTop" />
+        <service android:name=".TestbedCallService" android:exported="false" android:foregroundServiceType="shortService" />
+        <receiver android:name=".TestbedActionReceiver" android:exported="false" />
+    </application>
+</manifest>

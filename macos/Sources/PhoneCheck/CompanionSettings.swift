@@ -6,19 +6,23 @@ final class CompanionSettingsController {
     let window: NSWindow
     private let tabs: NSTabViewController
 
-    init(model: Companion, showTestbed: @escaping () -> Void) {
+    init(model: Companion, showTestbed: @escaping () -> Void = {}) {
         tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
         tabs.title = "Phone Check Settings"
         let phone = NSTabViewItem(viewController: NSHostingController(rootView: PhoneSettingsView(model: model)))
         phone.label = "Phone"
         phone.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Phone")
+        #if DEBUG
         let advanced = NSTabViewItem(viewController: NSHostingController(rootView:
             AdvancedSettingsView(showTestbed: showTestbed)))
         advanced.label = "Advanced"
         advanced.image = NSImage(systemSymbolName: "gearshape.2", accessibilityDescription: "Advanced")
+        #endif
         tabs.addTabViewItem(phone)
+        #if DEBUG
         tabs.addTabViewItem(advanced)
+        #endif
         window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.title = "Phone Check Settings"
@@ -36,6 +40,7 @@ final class CompanionSettingsController {
     }
 }
 
+#if DEBUG
 private struct AdvancedSettingsView: View {
     var showTestbed: () -> Void
 
@@ -53,6 +58,8 @@ private struct AdvancedSettingsView: View {
         }
     }
 }
+
+#endif
 
 private final class PhoneSettingsState: ObservableObject {
     @Published var confirmsUnpair = false

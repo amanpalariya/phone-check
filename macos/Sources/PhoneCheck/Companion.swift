@@ -51,7 +51,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             phoneName = credentials?.phoneName
             paired = credentials?.peer != nil
             status = paired ? "Disconnected" : "Not paired"
-        } catch { self.error = "Keychain unavailable" }
+        } catch { self.error = "Pairing storage unavailable" }
         refreshAuthorization()
         startListening()
         heartbeat = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in

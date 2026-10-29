@@ -18,7 +18,10 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    buildTypes { release { isMinifyEnabled = false } }
+    buildTypes {
+        debug { isDefault = true }
+        release { isMinifyEnabled = false }
+    }
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
