@@ -12,9 +12,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.*
 import android.app.NotificationManager
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private var signedIn by mutableStateOf(false)
+    private var signingIn by mutableStateOf(false)
+    private var authError by mutableStateOf<String?>(null)
     private var access by mutableStateOf(false)
+    private val authListener = com.google.firebase.auth.FirebaseAuth.AuthStateListener {
+        signedIn = it.currentUser != null; refresh(); BridgeState.service?.restart()
+    }
     private var network by mutableStateOf(false)
     private var networkBlocked by mutableStateOf(false)
     private val networkPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -25,26 +33,52 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         refresh()
+        CloudAccount.auth.addAuthStateListener(authListener)
         setContent {
             var code by remember { mutableStateOf("") }
             var error by remember { mutableStateOf<String?>(null) }
             var scanning by remember { mutableStateOf(false) }
             val pair: (String) -> Unit = { value ->
-                runCatching { Pairing.parse(value) }
+                runCatching { Pairing.parse(value, com.google.firebase.FirebaseApp.getInstance().options.projectId) }
                     .onSuccess { pairing ->
-                        runCatching { PairingStore(this).save(pairing) }
-                            .onSuccess {
-                                code = ""; error = null
-                                BridgeState.paired = true; BridgeState.status = "Allow notification access"
-                                BridgeState.service?.restart()
-                            }.onFailure { error = "Could not save pairing. Try again." }
+                        if (pairing.pairID == null || pairing.ownerUID == null || pairing.ownerUID != CloudAccount.auth.currentUser?.uid) {
+                            error = "Sign in with the same Google account as your Mac."; return@onSuccess
+                        }
+                        CloudPairing.join(pairing) { joined ->
+                            if (!joined) { error = "Pairing code expired or already used." }
+                            else runCatching { PairingStore(this@MainActivity).save(pairing) }
+                                .onSuccess {
+                                    code = ""; error = null
+                                    BridgeState.paired = true; BridgeState.status = "Allow notification access"
+                                    BridgeState.service?.restart()
+                                }.onFailure { error = "Could not save pairing. Pair again on your Mac." }
+                        }
                     }.onFailure { error = "Invalid pairing code. Use the code shown on your Mac." }
             }
             PhoneCheckTheme {
                 PhoneCheckScreen(
-                    paired = BridgeState.paired, access = access, network = network,
+                    signedIn = signedIn, signingIn = signingIn,
+                    onSignIn = {
+                        lifecycleScope.launch {
+                            signingIn = true; authError = null
+                            try { CloudAccount.signIn(this@MainActivity) }
+                            catch (_: androidx.credentials.exceptions.GetCredentialCancellationException) { }
+                            catch (_: Exception) { authError = "Could not sign in. Try again." }
+                            finally { signingIn = false }
+                        }
+                    },
+                    onSignOut = {
+                        val uid = CloudAccount.auth.currentUser?.uid
+                        if (uid != null) CloudAccount.root(uid).removeValue { failure, _ ->
+                            if (failure != null) error = "Could not sign out. Try again."
+                            else runCatching { PairingStore(this).clear() }.onSuccess {
+                                CloudAccount.auth.signOut(); BridgeState.service?.restart()
+                            }.onFailure { error = "Could not clear pairing" }
+                        }
+                    },
+                    paired = BridgeState.paired, access = access, network = true,
                     networkBlocked = networkBlocked, listenerReady = BridgeState.listenerReady,
-                    status = BridgeState.status, code = code, error = error, scanning = scanning,
+                    status = BridgeState.status, code = code, error = error ?: authError, scanning = scanning,
                     onCodeChange = { code = it; error = null },
                     onPair = { pair(code) },
                     onScan = {
@@ -72,21 +106,31 @@ class MainActivity : ComponentActivity() {
                     },
                     onTestbed = { DevelopmentFeatures.openTestbed(this) },
                     onUnpair = {
-                        runCatching { PairingStore(this).clear() }.onSuccess {
+                        val saved = PairingStore(this).load()
+                        val uid = CloudAccount.auth.currentUser?.uid
+                        if (uid != null && uid == saved?.ownerUID) {
+                            CloudAccount.root(uid).removeValue { failure, _ ->
+                                if (failure != null) { error = "Could not unpair. Try again." }
+                                else runCatching { PairingStore(this).clear() }.onSuccess {
+                                    BridgeState.paired = false; BridgeState.service?.restart()
+                                }.onFailure { error = "Could not clear pairing" }
+                            }
+                        } else runCatching { PairingStore(this).clear() }.onSuccess {
                             BridgeState.paired = false; BridgeState.service?.restart()
-                        }.onFailure { error = "Could not unpair" }
+                        }.onFailure { error = "Could not clear pairing" }
                     }
                 )
             }
         }
     }
+    override fun onDestroy() { CloudAccount.auth.removeAuthStateListener(authListener); super.onDestroy() }
     override fun onResume() { super.onResume(); refresh(); BridgeState.service?.restart() }
     private fun refresh() {
         access = getSystemService(NotificationManager::class.java).isNotificationListenerAccessGranted(
             ComponentName(this, NotificationBridge::class.java))
         network = Build.VERSION.SDK_INT < 37 || checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") == PackageManager.PERMISSION_GRANTED
-        BridgeState.paired = PairingStore(this).load() != null
+        BridgeState.paired = PairingStore(this).load()?.pairID != null
         if (!access && BridgeState.paired) BridgeState.status = "Allow notification access"
-        else if (!network && BridgeState.paired) BridgeState.status = "Allow local network"
+
     }
 }

@@ -1,14 +1,16 @@
 # Phone Check
 
-Android notification mirroring, actions, replies, dismissal, and phone battery/charging/Battery Saver status, with a native macOS menu-bar companion. Both apps are in this repository. One phone, one Mac, same local network. No backend or accounts.
+Android notification mirroring, actions, replies, dismissal, and phone battery/charging/Battery Saver status, with a native macOS menu-bar companion. Both apps are in this repository. One phone, one Mac, connected through Firebase with Google sign-in and explicit encrypted pairing.
 
-Local Wi-Fi remains the configured transport and the integration-test path. Firebase is the intended production default; both apps now include project-independent HTTPS real-time adapters behind the same notification interfaces. Project authentication, cloud pairing, session provisioning/reconnect and setup UI remain to be connected when the project exists. See [Firebase setup and architecture](firebase/README.md).
+Firebase Realtime Database is the only selected transport. The LAN implementation stays in source for a future settings option; it is not started by the apps. The project uses Spark, with pairing and session authorization implemented through database rules and device-held encryption secrets. See [Firebase setup and architecture](firebase/README.md).
 
 - `android/`: Kotlin, Compose, Material 3; Android 11+. System dynamic color on Android 12+, Material purple fallback on older versions.
 - `macos/`: SwiftUI, Network, CryptoKit, UserNotifications; macOS 14+. Native Liquid Glass on macOS 26+, standard-material fallback on older versions.
 - `protocol/`: wire format, authentication, and sync rules.
 
 ## Build
+
+Supply the gitignored `android/app/google-services.json` and `macos/GoogleService-Info.plist` from Firebase project settings, including Google OAuth client IDs and the database URL. The Mac also needs `macos/GoogleOAuthClient.json`, downloaded for the project's Desktop OAuth client.
 
 Android needs JDK 17+, Android SDK Platform 37.0, and Build Tools 36.0.0. Open `android/` in Android Studio or set `ANDROID_HOME` / `android/local.properties`:
 
@@ -28,7 +30,7 @@ open "macos/build/Phone Check.app"
 
 Both platforms default to **development** (`debug`): Android Studio's debug variant, bare `./gradlew` in `android/`, and the Mac build script. Development builds include the notification testbed and Advanced settings. Release builds exclude the testbed, its fixtures, and its Advanced settings entry.
 
-Mac development pairing is stored as unencrypted JSON in `~/Library/Application Support/dev.phonecheck.mac.pairing.development/pairing.json`, inside an owner-only directory (0700) with an owner-only file (0600). It survives rebuilding/re-signing without any Keychain access. Unpair removes it. Development never reads, migrates, or clears release Keychain credentials, so switching build configurations requires pairing separately. Android continues using Keystore-encrypted private preferences in both variants.
+Mac development pairing is stored as unencrypted JSON in `~/Library/Application Support/dev.phonecheck.mac.pairing.development/pairing.json`, inside an owner-only directory (0700) with an owner-only file (0600). It survives rebuilding/re-signing without using Keychain for the pairing secret. The Mac browser login stores its Firebase refresh token separately in the login Keychain, which can prompt after re-signing. Unpair removes it. Development never reads, migrates, or clears release Keychain credentials, so switching build configurations requires pairing separately. Android continues using Keystore-encrypted private preferences in both variants.
 
 Build a release explicitly:
 

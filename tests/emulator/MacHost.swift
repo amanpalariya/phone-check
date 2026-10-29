@@ -13,7 +13,7 @@ struct MacHost {
         let app = NSApplication.shared
         app.setActivationPolicy(.prohibited)
         try Credentials.clear()
-        let model = Companion()
+        let model = Companion(localNetworkForTesting: true)
         var connectionCount = 0
         let observation = model.$connected.sink { connected in
             if connected { connectionCount += 1 }

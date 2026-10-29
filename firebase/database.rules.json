@@ -2,32 +2,51 @@
   "rules": {
     ".read": false,
     ".write": false,
-    "pairs": {
-      "$pair": {
-        "sessions": {
+    "accounts": {
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid && !newData.exists()",
+        "control": {
+          ".read": "auth != null && auth.uid === $uid",
+          "pair": {
+            ".write": "auth != null && auth.uid === $uid",
+            ".validate": "newData.hasChildren(['id', 'expiresAt']) && (!data.exists() || (newData.child('id').val() === data.child('id').val() && newData.child('expiresAt').val() === data.child('expiresAt').val())) && (!newData.child('phone').exists() || data.child('phone').exists() || data.child('expiresAt').val() > now)",
+            "id": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9-]{36}$/)" },
+            "expiresAt": { ".validate": "newData.isNumber() && (data.exists() || (newData.val() > now && newData.val() <= now + 310000))" },
+            "phone": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9-]{36}$/) && (!data.exists() || newData.val() === data.val()) && newData.parent().child('proof').exists()" },
+            "proof": { ".validate": "newData.isString() && newData.val().length === 44 && newData.parent().child('phone').exists() && (!data.exists() || newData.val() === data.val())" },
+            "$other": { ".validate": false }
+          },
+          "request": {
+            ".write": "auth != null && auth.uid === $uid && root.child('accounts').child($uid).child('control/pair/phone').exists()",
+            ".validate": "newData.hasChildren(['id', 'peer', 'proof']) && newData.child('peer').val() === root.child('accounts').child($uid).child('control/pair/phone').val()",
+            "id": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9-]{36}$/)" },
+            "peer": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9-]{36}$/)" },
+            "proof": { ".validate": "newData.isString() && newData.val().length === 44" },
+            "$other": { ".validate": false }
+          },
+          "offer": {
+            ".write": "auth != null && auth.uid === $uid && root.child('accounts').child($uid).child('control/pair/phone').exists()",
+            ".validate": "newData.hasChildren(['id', 'request', 'expiresAt', 'proof']) && newData.child('request').val() === root.child('accounts').child($uid).child('control/request/id').val()",
+            "id": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9-]{36}$/) && (!data.exists() || newData.val() !== data.val())" },
+            "request": { ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9-]{36}$/)" },
+            "expiresAt": { ".validate": "newData.isNumber() && newData.val() > now && newData.val() <= now + 900000" },
+            "proof": { ".validate": "newData.isString() && newData.val().length === 44" },
+            "$other": { ".validate": false }
+          },
+          "$other": { ".validate": false }
+        },
+        "mailboxes": {
+          ".write": "auth != null && auth.uid === $uid && !newData.exists()",
           "$session": {
-            "phoneToMac": {
-              ".read": "auth != null && auth.uid === data.parent().child('macUID').val() && data.parent().child('expiresAt').val() > now",
-              ".write": "auth != null && auth.uid === data.parent().child('phoneUID').val() && data.parent().child('expiresAt').val() > now",
-              ".validate": "newData.isString() && newData.val().length <= 2097152"
-            },
-            "phoneToMacAck": {
-              ".read": "auth != null && auth.uid === data.parent().child('phoneUID').val() && data.parent().child('expiresAt').val() > now",
-              ".write": "auth != null && auth.uid === data.parent().child('macUID').val() && data.parent().child('expiresAt').val() > now",
-              ".validate": "newData.isString() && newData.val().matches(/^[0-9]{1,19}$/)"
-            },
-            "macToPhone": {
-              ".read": "auth != null && auth.uid === data.parent().child('phoneUID').val() && data.parent().child('expiresAt').val() > now",
-              ".write": "auth != null && auth.uid === data.parent().child('macUID').val() && data.parent().child('expiresAt').val() > now",
-              ".validate": "newData.isString() && newData.val().length <= 2097152"
-            },
-            "macToPhoneAck": {
-              ".read": "auth != null && auth.uid === data.parent().child('macUID').val() && data.parent().child('expiresAt').val() > now",
-              ".write": "auth != null && auth.uid === data.parent().child('phoneUID').val() && data.parent().child('expiresAt').val() > now",
-              ".validate": "newData.isString() && newData.val().matches(/^[0-9]{1,19}$/)"
+            ".write": "auth != null && auth.uid === $uid && !newData.exists()",
+            "$lane": {
+              ".read": "auth != null && auth.uid === $uid && root.child('accounts').child($uid).child('control/offer/id').val() === $session && root.child('accounts').child($uid).child('control/offer/expiresAt').val() > now && root.child('accounts').child($uid).child('control/pair/phone').exists()",
+              ".write": "auth != null && auth.uid === $uid && root.child('accounts').child($uid).child('control/offer/id').val() === $session && root.child('accounts').child($uid).child('control/offer/expiresAt').val() > now && root.child('accounts').child($uid).child('control/pair/phone').exists()",
+              ".validate": "newData.isString() && (($lane === 'phoneToMac' || $lane === 'macToPhone') && newData.val().length <= 2097152 || ($lane === 'phoneToMacAck' || $lane === 'macToPhoneAck') && newData.val().matches(/^[0-9]{1,19}$/))"
             }
           }
-        }
+        },
+        "$other": { ".validate": false }
       }
     }
   }

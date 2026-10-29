@@ -16,7 +16,31 @@ enum FirebaseChecks {
         try boundsAndFailures()
         try configurationAndAttention()
         try streamFraming()
-        print("7 Firebase/device-state check groups passed")
+        try controlStream()
+        print("8 Firebase/device-state check groups passed")
+    }
+    static func controlStream() throws {
+        var parser = FirebaseControlStream()
+        let events = [
+            #"event: put"# + "\n" + #"data: {"path":"/","data":{"pair":{"id":"pair"}}}"# + "\n\n",
+            #"event: patch"# + "\n" + #"data: {"path":"/pair","data":{"phone":"phone","proof":"proof"}}"# + "\n\n",
+            #"event: patch"# + "\n" + #"data: {"path":"/","data":{"offer/id":"session"}}"# + "\n\n"
+        ]
+        for event in events { for byte in event.utf8 { _ = try parser.append(byte) } }
+        try expect((parser.value["pair"] as? [String: Any])?["phone"] as? String == "phone")
+        try expect((parser.value["offer"] as? [String: Any])?["id"] as? String == "session")
+        for byte in "event: put\ndata: {\"path\":\"/pair\",\"data\":null}\n\n".utf8 { _ = try parser.append(byte) }
+        try expect(parser.value["pair"] == nil)
+        for event in ["auth_revoked", "cancel", "unknown"] {
+            var invalid = FirebaseControlStream(), rejected = false
+            do { for byte in "event: \(event)\ndata: null\n\n".utf8 { _ = try invalid.append(byte) } }
+            catch { rejected = true }
+            try expect(rejected)
+        }
+        var bounded = FirebaseControlStream(), rejected = false
+        do { for byte in String(repeating: "x", count: 16_385).utf8 { _ = try bounded.append(byte) } }
+        catch { rejected = true }
+        try expect(rejected)
     }
     static func batteryDelivery() throws {
         let bus = MailboxFixture(), config = try session()

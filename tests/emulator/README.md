@@ -1,5 +1,10 @@
 # Android Emulator integration tests
 
+This is the retained LAN integration harness. It does not exercise the current Google login
+or cloud pairing flow. Its Android setup/UI expectations need adapting to explicit LAN test
+injection before rerunning it after the Firebase-only switch. Current Firebase validation
+is documented in `firebase/README.md`; no full emulator/device run is claimed for this migration.
+
 These tests use a real Android `NotificationListenerService` and the production Swift `Companion`, `FramedConnection`, and crypto code. A separate Mac `.app` bundle isolates Keychain items and notification-center state from Phone Check. No production pairing is read or changed.
 
 Use a **dedicated emulator**: the runner clears Phone Check's app data and changes its permission state there. It refuses physical-device serials. Quit the normal Mac companion first because the test host uses the same port, 47831.

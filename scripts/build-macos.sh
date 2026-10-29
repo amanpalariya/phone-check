@@ -29,6 +29,18 @@ if actual is None or normalize(actual.group(1)) != normalize(sys.argv[1]):
 ' "$SDK_VERSION"
 cp "$ROOT/macos/Resources/PhoneCheck.icns" "$APP/Contents/Resources/PhoneCheck.icns"
 cp "$ROOT/macos/Info.plist" "$APP/Contents/Info.plist"
+FIREBASE_CONFIG="$ROOT/macos/GoogleService-Info.plist"
+if [[ ! -f "$FIREBASE_CONFIG" ]]; then
+    echo "Add macos/GoogleService-Info.plist from Firebase project settings before building." >&2
+    exit 1
+fi
+cp "$FIREBASE_CONFIG" "$APP/Contents/Resources/GoogleService-Info.plist"
+OAUTH_CONFIG="$ROOT/macos/GoogleOAuthClient.json"
+if [[ ! -f "$OAUTH_CONFIG" ]]; then
+    echo "Add macos/GoogleOAuthClient.json for the project's Desktop OAuth client before building." >&2
+    exit 1
+fi
+cp "$OAUTH_CONFIG" "$APP/Contents/Resources/GoogleOAuthClient.json"
 # Set SIGNING_IDENTITY to an Apple Development / Developer ID identity for reliable
 # local-network privacy and persistent Keychain access. Ad hoc signing is local-only.
 IDENTITY="${SIGNING_IDENTITY:--}"

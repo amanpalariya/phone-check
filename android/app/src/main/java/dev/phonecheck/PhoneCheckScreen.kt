@@ -36,6 +36,10 @@ internal fun PhoneCheckTheme(content: @Composable () -> Unit) {
 
 @Composable
 internal fun PhoneCheckScreen(
+    signedIn: Boolean = true,
+    signingIn: Boolean = false,
+    onSignIn: () -> Unit = {},
+    onSignOut: () -> Unit = {},
     paired: Boolean,
     access: Boolean,
     network: Boolean,
@@ -68,6 +72,7 @@ internal fun PhoneCheckScreen(
         else -> R.drawable.ic_phone
     }
     val heading = when {
+        !signedIn -> "Connect your devices"
         !paired -> "Pair your Mac"
         !access -> "Notification access"
         !network -> "Connect over Wi-Fi"
@@ -76,11 +81,12 @@ internal fun PhoneCheckScreen(
         else -> "Connecting"
     }
     val detail = when {
-        !paired -> "Scan the QR code in Phone Check on your Mac. Keep both devices on the same Wi-Fi."
+        !signedIn -> "Use the same Google account on your Mac."
+        !paired -> "Scan the QR code in Phone Check on your Mac."
         !access -> "Mirror notifications and use their actions on your Mac."
         !network -> "Allow access to your Mac on the local network."
         connected -> "Notifications appear on your Mac."
-        else -> "Keep both devices on the same Wi-Fi."
+        else -> "Make sure both devices are online."
     }
 
     Surface(Modifier.fillMaxSize()) {
@@ -88,6 +94,7 @@ internal fun PhoneCheckScreen(
             PhoneSettingsScreen(
                 advanced = settingsPage == "Advanced",
                 paired = paired,
+                signedIn = signedIn, onSignOut = onSignOut,
                 onBack = { settingsPage = if (settingsPage == "Advanced") "Settings" else null },
                 onAdvanced = { settingsPage = "Advanced" },
                 onTestbed = onTestbed,
@@ -122,7 +129,9 @@ internal fun PhoneCheckScreen(
                         modifier = Modifier.padding(top = 10.dp).widthIn(max = 290.dp))
                 }
 
-                if (!paired) {
+                if (!signedIn) {
+                    PrimaryButton(if (signingIn) "Signing in…" else "Sign in with Google", enabled = !signingIn, onClick = onSignIn)
+                } else if (!paired) {
                     if (!manualPairing) {
                         PrimaryButton(if (scanning) "Opening scanner…" else "Scan QR code",
                             enabled = !scanning, onClick = onScan)
@@ -164,6 +173,8 @@ internal fun PhoneCheckScreen(
 private fun PhoneSettingsScreen(
     advanced: Boolean,
     paired: Boolean,
+    signedIn: Boolean,
+    onSignOut: () -> Unit,
     onBack: () -> Unit,
     onAdvanced: () -> Unit,
     onTestbed: () -> Unit,
@@ -187,6 +198,9 @@ private fun PhoneSettingsScreen(
                 if (DevelopmentFeatures.enabled) {
                     ListItem(headlineContent = { Text("Advanced") },
                         modifier = Modifier.clickable(onClick = onAdvanced))
+                }
+                if (signedIn) {
+                    ListItem(headlineContent = { Text("Sign out") }, modifier = Modifier.clickable(onClick = onSignOut))
                 }
                 if (paired) {
                     ListItem(headlineContent = { Text("Unpair Mac") },

@@ -8,4 +8,23 @@ android/local.properties
 *.iml
 *.xcuserstate
 .env
+.env.*
+!.env.example
+!.env.*.example
+# Local signing material
+*.keystore
+*.jks
+*.p12
+*.p8
+*.mobileprovision
+*.provisionprofile
+# Project-specific Firebase client configuration (supplied locally or by CI)
+google-services.json
+GoogleService-Info.plist
+GoogleOAuthClient.json
+client_secret_*.json
+*-firebase-adminsdk-*.json
+node_modules/
+firebase/*-debug.log
+.firebase/
 __pycache__/

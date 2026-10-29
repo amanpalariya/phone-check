@@ -44,14 +44,16 @@ class NotificationBridge : NotificationListenerService() {
         inSession { if (snapshotSent) send(deviceStatusMessage()) }
     } }
     private var transport: NotificationTransport? = null
-    private var requiresLocalNetwork = true
-    private val callbacks = TransportCallbacks(::transportConnected, ::transportMessage, ::transportDisconnected)
+    private var requiresLocalNetwork = false
+    private val callbacks = TransportCallbacks(::transportConnected, ::transportMessage, ::transportDisconnected, ::cloudPairingRevoked)
     private var createTransport: (Pairing, TransportCallbacks) -> NotificationTransport = { pairing, callbacks ->
-        LanTransport(pairing, main, ::allowed,
-            onConnecting = { BridgeState.status = "Connecting…" },
-            onConnected = callbacks.onConnected,
-            onMessage = callbacks.onMessage,
-            onDisconnected = callbacks.onDisconnected)
+        CloudTransport(pairing, main, callbacks)
+    }
+    private fun cloudPairingRevoked() {
+        stopLink()
+        runCatching { PairingStore(this).clear() }.onSuccess {
+            BridgeState.paired = false; BridgeState.status = "Not paired"
+        }.onFailure { BridgeState.status = "Could not clear pairing" }
     }
     private fun transportConnected() = inSession { synchronize() }
     private fun transportMessage(message: JSONObject) = inSession { if (ready) handle(message) }
@@ -77,8 +79,10 @@ class NotificationBridge : NotificationListenerService() {
             onResult = { id, status -> send(JSONObject().put("type", "result").put("command", id).put("status", status)) },
             onProtocolError = { transport?.disconnect() }, onChanged = { publish(it) })
     }
+    private val authListener = com.google.firebase.auth.FirebaseAuth.AuthStateListener { restart() }
     override fun onCreate() {
         super.onCreate(); BridgeState.service = this
+        CloudAccount.auth.addAuthStateListener(authListener)
         battery.start()
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)
@@ -98,6 +102,7 @@ class NotificationBridge : NotificationListenerService() {
     }
     override fun onDestroy() {
         ready = false; BridgeState.listenerReady = false; BridgeState.service = null
+        CloudAccount.auth.removeAuthStateListener(authListener)
         unregisterReceiver(attentionReceiver); battery.close()
         stopLink(); transport?.close(); thread.quitSafely(); super.onDestroy()
     }
@@ -107,9 +112,11 @@ class NotificationBridge : NotificationListenerService() {
         check(Looper.myLooper() == Looper.getMainLooper())
         stopLink()
         val pairing = PairingStore(this).load()
-        BridgeState.paired = pairing != null
+        BridgeState.paired = pairing?.pairID != null
         when {
             pairing == null -> BridgeState.status = "Not paired"
+            pairing.pairID == null -> BridgeState.status = "Pair your Mac again"
+            CloudAccount.auth.currentUser?.uid != pairing.ownerUID -> BridgeState.status = "Sign in to connect"
             !ready -> BridgeState.status = "Allow notification access"
             !allowed() -> BridgeState.status = "Allow local network"
             else -> {

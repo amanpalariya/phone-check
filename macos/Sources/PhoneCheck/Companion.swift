@@ -23,7 +23,8 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     private var listener: NWListener?
     private var candidates: [UUID: FramedConnection] = [:]
     private var active: (any NotificationConnection)?
-    private var usesLocalNetwork = true
+    private var usesLocalNetwork = false
+    private var cloud: CloudSync?
     private var state = ActiveState()
     private var phoneAttention = PhoneAttentionState()
     private var staged: [Notice]?
@@ -39,7 +40,8 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         connected: { [weak self] in self?.connected == true },
         send: { [weak self] message in self?.active?.send(message) })
 
-    init(startServices: Bool = true) {
+    init(startServices: Bool = true, localNetworkForTesting: Bool = false) {
+        usesLocalNetwork = localNetworkForTesting
         super.init()
         guard startServices else { return }
         center.delegate = self
@@ -54,7 +56,11 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             status = paired ? "Disconnected" : "Not paired"
         } catch { self.error = "Pairing storage unavailable" }
         refreshAuthorization()
-        startListening()
+        if usesLocalNetwork { startListening() }
+        else {
+            CloudAccount.shared.onChange = { [weak self] in self?.startCloud() }
+            startCloud()
+        }
         heartbeat = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             self?.active?.send(Message("ping"))
         }
@@ -78,12 +84,17 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     }
     #endif
     var code: String {
-        guard pairing, let credentials, !host.isEmpty else { return "" }
+        guard pairing, let credentials else { return "" }
         let secret = credentials.secret.base64EncodedString().replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+        if let owner = credentials.ownerUID, let pairID = credentials.pairID,
+           case let project = CloudAccount.shared.projectID, !project.isEmpty {
+            return "pc2|\(project)|\(owner)|\(pairID)|\(secret)"
+        }
         return "pc1|\(host)|\(Wire.port)|\(secret)"
     }
     func startListening() {
+        if !usesLocalNetwork { startCloud(); return }
         guard usesLocalNetwork, listener == nil else { return }
         addresses = privateAddresses()
         if !addresses.contains(host) { host = addresses.first ?? "" }
@@ -105,6 +116,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         } catch { self.error = "Port unavailable" }
     }
     func beginPairing() {
+        if !usesLocalNetwork { beginCloudPairing(); return }
         guard !paired, listening else { return }
         addresses = privateAddresses()
         if !addresses.contains(host) { host = addresses.first ?? "" }
@@ -122,6 +134,10 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         } catch { self.error = "Could not save pairing" }
     }
     func cancelPairing() {
+        if !usesLocalNetwork && !paired {
+            cloud?.stop(); cloud = nil
+            CloudAccount.shared.root?.removeValue()
+        }
         pairing = false; pairingExpiresAt = nil; pairingTimer?.invalidate()
         if !paired {
             credentials = nil
@@ -129,13 +145,85 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             Array(candidates.values).forEach { $0.close() }
         }
     }
+    func signOut() {
+        guard let root = CloudAccount.shared.root else { CloudAccount.shared.signOut(); return }
+        root.removeValue { [weak self] failure, _ in
+            guard let self else { return }
+            if failure != nil { self.error = "Could not sign out. Try again."; return }
+            self.clearCloudPairing(); CloudAccount.shared.signOut()
+        }
+    }
     func unpair() {
+        if !usesLocalNetwork, let root = CloudAccount.shared.root {
+            root.removeValue { [weak self] failure, _ in
+                guard let self else { return }
+                if failure != nil { self.error = "Could not unpair. Try again."; return }
+                self.clearCloudPairing()
+            }
+            return
+        }
         do { try Credentials.clear() } catch { self.error = "Could not clear pairing"; return }
         credentials = nil; phoneName = nil; paired = false; pairing = false; pairingExpiresAt = nil
         pairingTimer?.invalidate()
         active?.close(); Array(candidates.values).forEach { $0.close() }
         clearActive(); status = "Not paired"; error = nil
-        usesLocalNetwork = true; startListening()
+        startListening()
+    }
+    private func clearCloudPairing() {
+        cloud?.stop(); cloud = nil; active?.close(); active = nil; clearActive()
+        do { try Credentials.clear() } catch { self.error = "Could not clear pairing"; return }
+        credentials = nil; paired = false; pairing = false; phoneName = nil
+        pairingExpiresAt = nil; pairingTimer?.invalidate(); status = "Not paired"
+    }
+    private func startCloud() {
+        guard !usesLocalNetwork else { return }
+        cloud?.stop(); cloud = nil; active?.close(); active = nil; clearActive()
+        listening = CloudAccount.shared.signedIn
+        guard let uid = CloudAccount.shared.uid, let root = CloudAccount.shared.root else {
+            paired = false; status = "Sign in to connect"; return
+        }
+        guard let saved = credentials, saved.ownerUID == uid, saved.pairID != nil else {
+            paired = false; status = "Not paired"; return
+        }
+        paired = saved.peer != nil
+        let sync = CloudSync(root: root, credentials: saved)
+        sync.onPair = { [weak self] next in
+            guard let self else { return false }
+            do { try next.save() } catch { self.error = "Could not save pairing"; return false }
+            self.credentials = next; self.paired = true; self.pairing = false
+            self.pairingExpiresAt = nil; self.pairingTimer?.invalidate(); self.error = nil
+            return true
+        }
+        sync.onConnect = { [weak self] connection in self?.connect(using: connection) }
+        sync.onRevoke = { [weak self] in self?.clearCloudPairing() }
+        sync.onError = { [weak self] text in self?.active?.close(); self?.error = text }
+        cloud = sync; sync.start()
+    }
+    private func beginCloudPairing() {
+        guard !paired, let uid = CloudAccount.shared.uid, let root = CloudAccount.shared.root else { return }
+        let next = Credentials(secret: Wire.random(), peer: nil, ownerUID: uid, pairID: UUID().uuidString.lowercased())
+        let expiry = Date().addingTimeInterval(300)
+        do { try next.save() } catch { self.error = "Could not save pairing"; return }
+        cloud?.stop(); cloud = nil
+        root.removeValue { [weak self] failure, _ in
+            guard let self else { return }
+            guard failure == nil, CloudAccount.shared.uid == uid else {
+                self.error = "Could not create pairing code"; return
+            }
+            root.child("control/pair").setValue(["id": next.pairID!, "expiresAt": Int64(expiry.timeIntervalSince1970 * 1000)]) { [weak self] failure, _ in
+                guard let self else { return }
+                guard failure == nil, CloudAccount.shared.uid == uid, expiry > Date() else {
+                    self.error = "Could not create pairing code"; return
+                }
+                self.credentials = next; self.pairing = true; self.pairingExpiresAt = expiry; self.error = nil
+                self.startCloud()
+                self.pairingTimer?.invalidate()
+                self.pairingTimer = Timer.scheduledTimer(withTimeInterval: max(0, expiry.timeIntervalSinceNow), repeats: false) { [weak self] _ in
+                    guard let self, !self.paired else { return }
+                    self.cancelPairing(); self.error = "Pairing code expired. Try again."
+                }
+            }
+        }
     }
     private func accept(_ connection: NWConnection) {
         guard candidates.count < 4, let credentials,
@@ -189,7 +277,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     func connect(using connection: any NotificationConnection) {
         guard paired else { connection.close(); error = "Pair a phone first"; return }
         usesLocalNetwork = false
-        listener?.cancel(); listener = nil; listening = false
+        listener?.cancel(); listener = nil; listening = true
         active?.close(); Array(candidates.values).forEach { $0.close() }
         clearActive(); active = connection; status = "Syncing…"
         connection.onMessage = { [weak self, weak connection] message in
@@ -372,7 +460,8 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     }
     @objc private func willSleep() {
         active?.close(); Array(candidates.values).forEach { $0.close() }
-        cancelPairing()
+        if pairing { cancelPairing() }
+        cloud?.stop()
     }
     @objc private func didWake() { startListening(); refreshAuthorization() }
 }

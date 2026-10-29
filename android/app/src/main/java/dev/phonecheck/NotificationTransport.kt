@@ -10,7 +10,8 @@ import java.util.concurrent.TimeUnit
 internal data class TransportCallbacks(
     val onConnected: () -> Unit,
     val onMessage: (JSONObject) -> Unit,
-    val onDisconnected: () -> Unit
+    val onDisconnected: () -> Unit,
+    val onPairingRevoked: () -> Unit = {}
 )
 
 internal interface NotificationTransport : AutoCloseable {

@@ -11,7 +11,7 @@ public final class FirebaseRESTMailbox: FirebaseMailbox {
     private var tasks: [UUID: Task<Void, Never>] = [:]
     private var closed = false
 
-    public init(databaseURL: URL, pairID: String, sessionID: String,
+    public init(databaseURL: URL, pairID: String, sessionID: String, ownerUID: String? = nil,
                 idToken: @escaping () async throws -> String) throws {
         guard databaseURL.scheme == "https", let host = databaseURL.host,
               host.hasSuffix(".firebaseio.com") || host.hasSuffix(".firebasedatabase.app"),
@@ -21,8 +21,17 @@ public final class FirebaseRESTMailbox: FirebaseMailbox {
               !pairID.isEmpty, pairID.count <= 128,
               pairID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }),
               UUID(uuidString: sessionID) != nil else { throw FirebaseRESTError.configuration }
-        baseURL = databaseURL.appendingPathComponent("pairs").appendingPathComponent(pairID)
-            .appendingPathComponent("sessions").appendingPathComponent(sessionID)
+        if let ownerUID {
+            guard !ownerUID.isEmpty, ownerUID.count <= 128,
+                  ownerUID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else {
+                throw FirebaseRESTError.configuration
+            }
+            baseURL = databaseURL.appendingPathComponent("accounts").appendingPathComponent(ownerUID)
+                .appendingPathComponent("mailboxes").appendingPathComponent(sessionID)
+        } else {
+            baseURL = databaseURL.appendingPathComponent("pairs").appendingPathComponent(pairID)
+                .appendingPathComponent("sessions").appendingPathComponent(sessionID)
+        }
         self.idToken = idToken
     }
     public func observe(_ path: String, changed: @escaping (Result<String?, Error>) -> Void) -> () -> Void {
@@ -90,8 +99,9 @@ public final class FirebaseRESTMailbox: FirebaseMailbox {
     deinit { tasks.values.forEach { $0.cancel() } }
 }
 
-private final class FirebaseRedirectPolicy: NSObject, URLSessionTaskDelegate {
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+public final class FirebaseRedirectPolicy: NSObject, URLSessionTaskDelegate {
+    public override init() { super.init() }
+    public func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         guard response.statusCode == 307, let url = request.url, url.scheme == "https",
               url.port == nil, url.user == nil, url.password == nil, let host = url.host,

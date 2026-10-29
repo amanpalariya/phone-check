@@ -7,6 +7,8 @@ struct Credentials: Codable {
     var secret: Data
     var peer: String?
     var phoneName: String? = nil
+    var ownerUID: String? = nil
+    var pairID: String? = nil
     static let service = (Bundle.main.bundleIdentifier ?? "dev.phonecheck.mac") + ".pairing"
     #if DEBUG
     // Development pairing survives ad hoc re-signing without touching Keychain.

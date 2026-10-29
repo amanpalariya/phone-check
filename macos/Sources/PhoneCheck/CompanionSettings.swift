@@ -67,6 +67,7 @@ private final class PhoneSettingsState: ObservableObject {
 
 struct PhoneSettingsView: View {
     @ObservedObject var model: Companion
+    @ObservedObject private var account = CloudAccount.shared
     var showPairing: () -> Void = {}
     @StateObject private var state = PhoneSettingsState()
 
@@ -106,7 +107,7 @@ struct PhoneSettingsView: View {
                     }
                     if !model.connected {
                         HStack {
-                            Text("Keep both devices on the same Wi-Fi.").foregroundStyle(.secondary)
+                            Text("Make sure both devices are online.").foregroundStyle(.secondary)
                             Spacer()
                             if !model.listening {
                                 Button("Retry", action: model.startListening)
@@ -129,8 +130,15 @@ struct PhoneSettingsView: View {
                         }.padding(12)
                     }
                 } else {
-                    Text("Both devices need to be on the same Wi-Fi.")
+                    Text("Connect both devices to the internet.")
                         .font(.callout).foregroundStyle(.secondary)
+                }
+                if account.signedIn {
+                    HStack {
+                        Text("Google account").foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Sign out", action: model.signOut)
+                    }
                 }
                 if let error = model.error {
                     Label(error, systemImage: "exclamationmark.circle")

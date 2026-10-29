@@ -8,12 +8,21 @@ private final class PairingPresentation: ObservableObject {
 /// Pairing stays in the same transient surface as the notification feed.
 struct PairingPane: View {
     @ObservedObject var model: Companion
+    @ObservedObject private var account = CloudAccount.shared
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var presentation = PairingPresentation()
 
     var body: some View {
         VStack(spacing: 18) {
-            if model.pairing {
+            if !account.signedIn {
+                PairingDevices().padding(.vertical, 8)
+                Text("Your phone, right here.").font(.title2.weight(.semibold))
+                Text("Use the same Google account on Android.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Button(account.busy ? "Signing in…" : "Sign in with Google", action: account.signIn)
+                    .disabled(account.busy || !account.configured).modifier(NativePrimaryAction())
+                if let error = account.error { Text(error).font(.caption).foregroundStyle(.red) }
+            } else if model.pairing {
                 VStack(spacing: 6) {
                     Text("Scan to pair").font(.title2.weight(.semibold))
                     Text("Open Phone Check on Android.")
@@ -65,7 +74,7 @@ struct PairingPane: View {
                     if model.listening { model.beginPairing() } else { model.startListening() }
                 }
                 .modifier(NativePrimaryAction())
-                Text("Keep both devices on the same Wi-Fi.")
+                Text("Pair once. Connect wherever you are online.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

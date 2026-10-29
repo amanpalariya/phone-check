@@ -1,6 +1,6 @@
 # Protocol v1
 
-The configured LAN transport uses direct TCP on port 47831. There is no discovery service, automatic cloud fallback, or forwarding before authentication. Project-independent Firebase adapters reuse the same notification messages over a separate encrypted mailbox envelope; see [Firebase sync](../firebase/README.md). Pairing encodes `pc1|privateIPv4|port|base64url(secret)`. The Mac generates a random 256-bit secret, exposes it only during an explicit five-minute pairing window, and accepts one persisted phone UUID. A new pairing secret invalidates earlier codes. Treat a pairing code as a credential.
+The retained LAN transport uses direct TCP on port 47831. There is no discovery service, automatic cloud fallback, or forwarding before authentication. Firebase is the selected app transport and reuses the same notification messages over a separate encrypted mailbox envelope; see [Firebase sync](../firebase/README.md). Pairing encodes `pc1|privateIPv4|port|base64url(secret)`. The Mac generates a random 256-bit secret, exposes it only during an explicit five-minute pairing window, and accepts one persisted phone UUID. A new pairing secret invalidates earlier codes. Treat a pairing code as a credential.
 
 ## Authentication and encryption
 

@@ -190,7 +190,7 @@ struct CompanionView: View {
                     Text(model.connected ? "All clear" : "Waiting for phone")
                         .font(.body.weight(.medium)).foregroundStyle(.secondary)
                     if !model.connected {
-                        Text("Keep both devices on the same Wi-Fi.")
+                        Text("Make sure both devices are online.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }.frame(maxWidth: .infinity).padding(.vertical, 30)

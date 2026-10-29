@@ -50,12 +50,21 @@ internal class SessionCipher(private val key: ByteArray) {
     }
 }
 
-internal data class Pairing(val host: String, val port: Int, val secret: ByteArray, val peer: String) {
+internal data class Pairing(val host: String, val port: Int, val secret: ByteArray, val peer: String,
+    val ownerUID: String? = null, val pairID: String? = null) {
     fun json() = JSONObject().put("host", host).put("port", port)
         .put("secret", Wire.b64(secret)).put("peer", peer)
+        .put("ownerUID", ownerUID).put("pairID", pairID)
     companion object {
-        fun parse(code: String): Pairing {
+        fun parse(code: String, projectID: String? = null): Pairing {
             val parts = code.trim().split('|')
+            if (parts.size == 5 && parts[0] == "pc2") {
+                require(parts[1] == projectID)
+                require(parts[2].matches(Regex("[A-Za-z0-9_-]{1,128}")))
+                require(java.util.UUID.fromString(parts[3]).toString() == parts[3])
+                val secret = Base64.getUrlDecoder().decode(parts[4]).also { require(it.size == 32) }
+                return Pairing("", 0, secret, java.util.UUID.randomUUID().toString(), parts[2], parts[3])
+            }
             require(parts.size == 4 && parts[0] == "pc1")
             // Literal private IPv4 only. Never send pairing material to a public endpoint.
             require(isPrivateIPv4(parts[1]))
@@ -64,7 +73,9 @@ internal data class Pairing(val host: String, val port: Int, val secret: ByteArr
             return Pairing(parts[1], port, secret, java.util.UUID.randomUUID().toString())
         }
         fun restore(json: JSONObject) = Pairing(json.getString("host"), json.getInt("port"),
-            Wire.unbase64(json.getString("secret")), json.getString("peer"))
+            Wire.unbase64(json.getString("secret")), json.getString("peer"),
+            json.optString("ownerUID").takeIf { it.isNotEmpty() && it != "null" },
+            json.optString("pairID").takeIf { it.isNotEmpty() && it != "null" })
         fun isPrivateIPv4(host: String): Boolean {
             val parts = host.split('.')
             if (parts.size != 4) return false
