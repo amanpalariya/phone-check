@@ -22,8 +22,8 @@ final class NotificationAppearance: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         usesSystemBackdrop = defaults.object(forKey: Self.systemKey) as? Bool ?? true
-        let savedBlur = defaults.object(forKey: Self.blurKey) as? Double ?? 2
-        blurAmount = savedBlur.isFinite ? min(12, max(0, savedBlur)) : 2
+        let savedBlur = defaults.object(forKey: Self.blurKey) as? Double ?? 1
+        blurAmount = savedBlur.isFinite ? min(12, max(0, savedBlur)) : 1
         let saved = defaults.object(forKey: Self.key) as? Double ?? 0.35
         transparency = saved.isFinite ? min(1, max(0, saved)) : 0.35
     }
@@ -36,16 +36,15 @@ private final class AppearanceSettingsState: ObservableObject {
 
 struct NotificationAppearanceSettings: View {
     @ObservedObject private var appearance = NotificationAppearance.shared
-    var close: () -> Void
     @StateObject private var state = AppearanceSettingsState()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Appearance").font(.headline)
+            Text("Backdrop").font(.headline)
             Picker("Backdrop", selection: $appearance.usesSystemBackdrop) {
                 Text("Automatic").tag(true)
                 Text("Custom").tag(false)
-            }.pickerStyle(.segmented)
+            }.pickerStyle(.segmented).labelsHidden()
             if state.supportsBlurControl {
                 VStack(spacing: 8) {
                     HStack {
@@ -80,12 +79,8 @@ struct NotificationAppearanceSettings: View {
             if state.reduceTransparency {
                 Text("Reduce Transparency is on.").font(.caption).foregroundStyle(.secondary)
             }
-            HStack {
-                Spacer()
-                Button("Done", action: close).keyboardShortcut(.defaultAction)
-            }
         }
-        .padding(20).frame(width: 320)
+        .padding(24).frame(maxWidth: .infinity, alignment: .leading)
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)) { _ in
             state.reduceTransparency = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         }

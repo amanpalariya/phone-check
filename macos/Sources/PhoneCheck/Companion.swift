@@ -8,12 +8,13 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     @Published private(set) var status = "Not paired"
     @Published private(set) var notices: [Notice] = []
     var notificationCount: Int { NotificationSection.count(notices) }
+    @Published private(set) var phoneName: String?
+    var phoneIdentifier: String? { credentials?.peer }
     @Published private(set) var paired = false
     @Published private(set) var connected = false
     @Published private(set) var listening = false
     @Published private(set) var pairing = false
     @Published private(set) var addresses: [String] = []
-    @Published var confirmUnpair = false
     @Published var host = ""
     @Published private(set) var alertsAllowed = false
     @Published private(set) var error: String?
@@ -47,6 +48,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         center.removeAllPendingNotificationRequests()
         do {
             credentials = try Credentials.load()
+            phoneName = credentials?.phoneName
             paired = credentials?.peer != nil
             status = paired ? "Disconnected" : "Not paired"
         } catch { self.error = "Keychain unavailable" }
@@ -114,7 +116,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     }
     func unpair() {
         do { try Credentials.clear() } catch { self.error = "Could not clear pairing"; return }
-        credentials = nil; paired = false; pairing = false; pairExpiry = nil
+        credentials = nil; phoneName = nil; paired = false; pairing = false; pairExpiry = nil
         pairingTimer?.invalidate()
         active?.close(); Array(candidates.values).forEach { $0.close() }
         clearActive(); status = "Not paired"; error = nil
@@ -189,6 +191,16 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
 
     private func receive(_ message: Message) {
         switch message.type {
+        case "device_info":
+            // Only accept device identity inside the authenticated encrypted session.
+            guard let name = message.deviceName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty, name.count <= 128,
+                  name.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
+                  var saved = credentials, saved.peer != nil, saved.phoneName != name else { return }
+            saved.phoneName = name
+            do {
+                try saved.save(); credentials = saved; phoneName = name
+            } catch { self.error = "Could not save phone name" }
         case "snapshot_begin":
             guard !state.synchronized, staged == nil else { active?.close(); return }
             staged = []; stagedBytes = 0
@@ -288,8 +300,15 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         }
     }
     func allowAlerts() {
-        center.requestAuthorization(options: [.alert]) { [weak self] allowed, _ in
-            DispatchQueue.main.async { self?.alertsAllowed = allowed }
+        center.getNotificationSettings { [weak self] settings in
+            guard let self else { return }
+            if settings.authorizationStatus == .denied {
+                DispatchQueue.main.async { self.openNotificationSettings() }
+            } else {
+                self.center.requestAuthorization(options: [.alert]) { [weak self] allowed, _ in
+                    DispatchQueue.main.async { self?.alertsAllowed = allowed }
+                }
+            }
         }
     }
     func openNotificationSettings() {

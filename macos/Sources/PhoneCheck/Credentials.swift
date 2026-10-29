@@ -4,6 +4,7 @@ import Security
 struct Credentials: Codable {
     var secret: Data
     var peer: String?
+    var phoneName: String? = nil
     static let service = (Bundle.main.bundleIdentifier ?? "dev.phonecheck.mac") + ".pairing"
     static func load() throws -> Credentials? {
         var query = baseQuery

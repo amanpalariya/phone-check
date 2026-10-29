@@ -66,7 +66,6 @@ final class NotificationCommandController: ObservableObject {
     func receiveResult(id: String, status: String) -> Removal? {
         guard let command = pending[id] else { return nil }
         if status == "sent", command.kind != "dismiss" {
-            feedback[command.key] = "Sent to phone"
             if replyTarget?.key == command.key { replyTarget = nil; replyDraft = "" }
             finish(id)
         } else if status == "removed", command.kind == "dismiss" {

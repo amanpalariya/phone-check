@@ -34,8 +34,24 @@ struct MaterialReview {
             return
         }
         app.setActivationPolicy(.regular)
-        if CommandLine.arguments.contains("--blur-probe") {
-            runBlurProbe()
+        if CommandLine.arguments.contains("--settings") {
+            let model = Companion(startServices: false)
+            if CommandLine.arguments.contains("--paired") { model.showPreview([]) }
+            let controller = CompanionSettingsController(model: model)
+            if CommandLine.arguments.contains("--dark") {
+                controller.window.appearance = NSAppearance(named: .darkAqua)
+            }
+            controller.show()
+            if let flag = CommandLine.arguments.firstIndex(of: "--render"), CommandLine.arguments.count > flag + 1 {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+                let view = controller.window.contentView!
+                view.layoutSubtreeIfNeeded()
+                let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+                view.cacheDisplay(in: view.bounds, to: bitmap)
+                try! bitmap.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[flag + 1]))
+                return
+            }
+            withExtendedLifetime(controller) { app.run() }
             return
         }
         if CommandLine.arguments.contains("--blur-review") || CommandLine.arguments.contains("--pane-blur-review") {
@@ -230,15 +246,37 @@ private struct RichReview: View {
 
 // Separate windows are essential: the material must sample pixels BEHIND the window.
 private func runBlurReview() {
+    if CommandLine.arguments.contains("--appearance-defaults") {
+        NotificationAppearance.shared.usesSystemBackdrop = true
+        NotificationAppearance.shared.blurAmount = 1
+    }
     let backdrop = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 600),
                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
     backdrop.title = "Backdrop material comparison"
-    backdrop.contentView = BlurReviewPattern(frame: NSRect(x: 0, y: 0, width: 920, height: 600))
+    var scrollObserver: NSObjectProtocol?
+    if CommandLine.arguments.contains("--scroll-through-review") {
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 920, height: 600))
+        scroll.hasVerticalScroller = true
+        scroll.documentView = BlurReviewPattern(frame: NSRect(x: 0, y: 0, width: 920, height: 2400))
+        scroll.contentView.postsBoundsChangedNotifications = true
+        func reportScroll() {
+            let data = Data("\(scroll.contentView.bounds.origin.y)".utf8)
+            try! data.write(to: URL(fileURLWithPath: "/tmp/phonecheck-behind-scroll-offset"), options: .atomic)
+        }
+        scrollObserver = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification,
+            object: scroll.contentView, queue: .main) { _ in reportScroll() }
+        backdrop.contentView = scroll
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: 900))
+        reportScroll()
+    } else {
+        backdrop.contentView = BlurReviewPattern(frame: NSRect(x: 0, y: 0, width: 920, height: 600))
+    }
     backdrop.center()
     backdrop.makeKeyAndOrderFront(nil)
     let frame = backdrop.convertToScreen(NSRect(x: 0, y: 0, width: 920, height: 600))
     let samples = NotificationPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     samples.title = "Blur material samples"
+    samples.level = .floating
     samples.appearance = NSAppearance(named: CommandLine.arguments.contains("--dark") ? .darkAqua : .aqua)
     samples.isOpaque = false
     samples.backgroundColor = .clear
@@ -251,8 +289,10 @@ private func runBlurReview() {
     if CommandLine.arguments.contains("--pane-blur-review") {
         let testbed = NotificationTestbed()
         testbed.show(.text)
-        testbed.show(.messaging)
-        testbed.show(.group)
+        if !CommandLine.arguments.contains("--single") {
+            testbed.show(.messaging)
+            testbed.show(.group)
+        }
         if CommandLine.arguments.contains("--more") { testbed.showAll() }
         testbed.showsInPane = true
         let surface = NotificationPaneSurface(frame: NSRect(x: 238, y: 10, width: 444, height: 580),
@@ -262,6 +302,9 @@ private func runBlurReview() {
                                        })
                 .padding(.top, NotificationPaneLayout.contentTopInset).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)))
         content.addSubview(surface)
+        if CommandLine.arguments.contains("--no-backdrop-tint") {
+            surface.suppressBackdropTint = true
+        }
     } else {
         for (index, sample) in materials.enumerated() {
             let effect = NSVisualEffectView(frame: NSRect(x: 20 + index * 225, y: 70, width: 205, height: 430))
@@ -281,60 +324,26 @@ private func runBlurReview() {
             content.addSubview(label)
         }
     }
+    if CommandLine.arguments.contains("--backdrop-controls") {
+        let controls = NSHostingView(rootView: NotificationAppearanceSettings())
+        controls.frame = NSRect(x: 0, y: 60, width: 230, height: 500)
+        content.addSubview(controls)
+    }
     samples.contentView = content
     // Keep separate window groups so behind-window materials can sample the pattern.
-    samples.level = .floating
     samples.makeKeyAndOrderFront(nil)
     NSApp.activate(ignoringOtherApps: true)
-    withExtendedLifetime((backdrop, samples)) { NSApp.run() }
+    withExtendedLifetime((backdrop, samples, scrollObserver)) { NSApp.run() }
 }
 
 private final class BlurReviewPattern: NSView {
     override func draw(_ dirtyRect: NSRect) {
         NSGradient(starting: .systemBlue, ending: .systemOrange)!.draw(in: bounds, angle: 20)
-        for row in 0..<20 {
+        for row in 0..<Int(ceil(bounds.height / 30)) {
             let y = CGFloat(row * 30)
             let text = "Background detail · 0123456789 · sharp letters · "
             (String(repeating: text, count: 4) as NSString).draw(at: NSPoint(x: 0, y: y),
                 withAttributes: [.font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.black])
         }
     }
-}
-
-
-// Diagnostic only: compare a pure compositor blur to the public material.
-private func runBlurProbe() {
-    let parent = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 600),
-                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
-    parent.title = "Backdrop blur probe"
-    parent.contentView = BlurReviewPattern(frame: NSRect(x: 0, y: 0, width: 920, height: 600))
-    parent.center()
-    parent.makeKeyAndOrderFront(nil)
-    let frame = parent.convertToScreen(NSRect(x: 0, y: 0, width: 920, height: 600))
-    let panel = NotificationPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-    panel.title = "Compositor blur comparison"
-    panel.isOpaque = false
-    panel.backgroundColor = NSColor.white.withAlphaComponent(0.001)
-    panel.hasShadow = false
-    let canvas = NSView(frame: NSRect(origin: .zero, size: frame.size))
-    canvas.wantsLayer = true
-    let material = NSVisualEffectView(frame: NSRect(x: 30, y: 60, width: 400, height: 440))
-    material.material = .underWindowBackground
-    material.blendingMode = .behindWindow
-    material.state = .active
-    canvas.addSubview(material)
-    let pure = CompositorBackdrop(frame: NSRect(x: 480, y: 60, width: 400, height: 440))
-    pure.radius = 4 // The comparison level judged by the user; the app defaults to 2.
-    canvas.addSubview(pure)
-    for (title, x) in [("Public material", 30), ("Pure compositor blur", 480)] {
-        let label = NSTextField(labelWithString: title)
-        label.frame = NSRect(x: x, y: 520, width: 400, height: 30)
-        label.font = .boldSystemFont(ofSize: 20)
-        canvas.addSubview(label)
-    }
-    panel.contentView = canvas
-    parent.addChildWindow(panel, ordered: .above)
-    panel.makeKeyAndOrderFront(nil)
-    NSApp.activate(ignoringOtherApps: true)
-    withExtendedLifetime((parent, panel)) { NSApp.run() }
 }

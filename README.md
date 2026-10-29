@@ -52,9 +52,15 @@ macos/build/PhoneCheckMaterialReview.app/Contents/MacOS/PhoneCheckMaterialReview
 open -n macos/build/PhoneCheckMaterialReview.app --args --blur-review
 # Actual pane over the same background (add --dark for dark appearance):
 open -n macos/build/PhoneCheckMaterialReview.app --args --pane-blur-review
+# Live backdrop controls over a scrollable text pattern (add --dark for dark cards):
+open macos/build/PhoneCheckMaterialReview.app --args --pane-blur-review --backdrop-controls --appearance-defaults --scroll-through-review --more
 # Live panel preview with local samples:
 open -n macos/build/PhoneCheckMaterialReview.app --args --pane
 ```
+
+Add `--single` (without `--more`) to check short-list alignment, or `--no-backdrop-tint` to inspect blur independently of the dark wash. Automatic appearance defaults to blur 1 with an 8% dark wash in light mode and 10% in dark mode.
+
+For backdrop review, keep one preview instance open and inspect a composed-screen capture using macOS Screenshot. Window-only captures omit the content behind the panel. Scrolling over exposed backdrop must leave the underlying pattern's scroll position unchanged; the notification list must still scroll normally. The scroll fixture records its underlying offset in `/tmp/phonecheck-behind-scroll-offset`.
 
 Core checks run without XCTest or a full Xcode install:
 
@@ -64,7 +70,7 @@ swift run --package-path macos PhoneCheckChecks
 
 ## Pair
 
-1. Open the Mac companion from the menu bar and choose **Pair phone**.
+1. Open **Settings…** from the Mac companion’s gear menu (or press **⌘,**) and choose **Pair phone** in the Phone tab. Settings shows the paired phone, connection status, and **Unpair…**; the Appearance tab contains backdrop controls.
 2. Enter its pairing code in the Android app within five minutes. Both devices must be on the same private IPv4 LAN; choose the Mac's Wi-Fi address if several addresses appear. Guest Wi-Fi client isolation can prevent connections.
 3. Grant Android notification access and, on Android 17+, local network access. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
 4. Enable Mac notifications in the companion. Allow local network access if macOS asks.

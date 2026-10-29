@@ -31,6 +31,9 @@ struct RichNoticeRow: View {
     private var actions: [NoticeAction] { notice.actions ?? [] }
     private var immediateControls: Bool { notice.kind == "media" || notice.kind == "call" }
     private var replying: Bool { commands.replyTarget?.key == notice.key }
+    private var verticalPadding: CGFloat {
+        (expanded ? 12 : 10) - (notice.dismissible ? 0 : 2)
+    }
     private var showsFooter: Bool {
         expanded && !immediateControls && !replying && (!actions.isEmpty || notice.openable == true)
     }
@@ -96,8 +99,8 @@ struct RichNoticeRow: View {
             }
         }
         .padding(.horizontal, expanded ? 12 : 10)
-        .padding(.top, expanded ? 12 : 10)
-        .padding(.bottom, showsFooter ? 4 : expanded ? 12 : 10)
+        .padding(.top, verticalPadding)
+        .padding(.bottom, showsFooter ? 4 : verticalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .modifier(NotificationCard(canDismiss: notice.dismissible && !pending) { commands.dismiss(notice) })
         .geometryGroup()
@@ -127,12 +130,8 @@ struct RichNoticeRow: View {
             Spacer(minLength: 4)
             if pending {
                 ProgressView().controlSize(.mini).accessibilityLabel("Waiting for phone")
-            } else if notice.ongoing == true {
-                Text("Ongoing").font(.caption2).foregroundStyle(.secondary)
-            } else if notice.postedAt > 0 {
-                Text(Date(timeIntervalSince1970: Double(notice.postedAt) / 1000), style: .time)
-                    .font(.caption2).foregroundStyle(.secondary)
             }
+            NotificationTime(postedAt: notice.postedAt)
             expansionButton
         }
     }

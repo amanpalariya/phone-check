@@ -19,7 +19,7 @@ struct NoticeAppIcon: View {
     }
 }
 
-/// Collapsed rows spend their height on the app icon and message, not metadata.
+/// Keep the time beside the title without adding height to collapsed rows.
 struct NotificationPreview<Trailing: View>: View {
     let notice: Notice
     var count: Int? = nil
@@ -40,6 +40,8 @@ struct NotificationPreview<Trailing: View>: View {
                         Text(notice.title).font(.body.weight(.semibold)).lineLimit(1)
                     }
                     if let count { Text("\(count)").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
+                    Spacer(minLength: 4)
+                    NotificationTime(postedAt: notice.postedAt)
                 }
                 if !preview.isEmpty {
                     Text(preview).font(.subheadline).foregroundStyle(.primary).lineLimit(1)
@@ -55,6 +57,17 @@ struct NotificationPreview<Trailing: View>: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(notice.app)
+    }
+}
+
+struct NotificationTime: View {
+    let postedAt: Int64
+    var body: some View {
+        if postedAt > 0 {
+            Text(Date(timeIntervalSince1970: Double(postedAt) / 1000), style: .time)
+                .font(.caption2).foregroundStyle(.secondary)
+                .fixedSize()
+        }
     }
 }
 

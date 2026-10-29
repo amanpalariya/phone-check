@@ -89,13 +89,48 @@ func runPaneChecks() {
     precondition(panel.isVisible && !panel.isOpaque && !panel.hasShadow)
     precondition(panel.styleMask.contains(.nonactivatingPanel) && !panel.styleMask.contains(.titled))
     let surface = panel.contentView as! NotificationPaneSurface
+    precondition(surface.compositor.window === panel && surface.host.window === panel,
+                 "A single pane window must own backdrop input and notification content")
+    precondition(panel.childWindows?.isEmpty != false,
+                 "The pane must not create a click-through backdrop window")
     precondition(surface.backdrop.material == .underWindowBackground)
-    precondition(surface.backdrop.blendingMode == .behindWindow && surface.backdrop.maskImage != nil)
+    precondition(surface.backdrop.blendingMode == .behindWindow && surface.backdrop.layer?.mask != nil)
+    if (26...27).contains(ProcessInfo.processInfo.operatingSystemVersion.majorVersion) {
+        precondition(surface.compositor.isAvailable, "The tested OS must provide a configurable native backdrop")
+    }
     if surface.compositor.isAvailable && !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
         precondition(!surface.compositor.isHidden && surface.backdrop.isHidden,
                      "Use the blur-only renderer when available")
         precondition(surface.compositor.maskImage != nil && surface.compositor.frame == surface.backdrop.frame,
                      "Real blur must share the localized, feathered bounds")
+        func kernel(_ view: CompositorBackdrop) -> Double? {
+            let gaussian = view.blurLayer?.filters?.compactMap { $0 as? NSObject }.first {
+                $0.value(forKey: "type") as? String == "gaussianBlur"
+            }
+            return (gaussian?.value(forKey: "inputRadius") as? NSNumber)?.doubleValue
+        }
+        precondition(kernel(surface.compositor) == NotificationAppearance.shared.blurAmount * 3,
+                     "The backdrop must apply saved blur before the slider is touched")
+        precondition(panel.value(forKey: "shouldAutoFlattenLayerTree") as? Bool == false,
+                     "Idle windows must retain live behind-window sampling")
+        precondition(surface.compositor.blurLayer!.value(forKey: "groupName") as? String != "NSCGSWindowBehindWindowCaptureBackdropGroup",
+                     "Backdrop filtering must not share the notification materials' capture group")
+        let savedBlur = NotificationAppearance.shared.blurAmount
+        NotificationAppearance.shared.blurAmount = 0
+        settle()
+        let blur = surface.compositor.blurLayer!
+        precondition(kernel(surface.compositor) == 0,
+                     "The appearance setting must reach AppKit's behind-window blur")
+        precondition(blur.value(forKey: "windowServerAware") as? Bool == true,
+                     "The blur must sample behind the window")
+        NotificationAppearance.shared.blurAmount = 12
+        settle()
+        precondition(kernel(surface.compositor) == 36,
+                     "Live changes must reach the native background filter")
+        precondition(surface.host.layer?.filters?.isEmpty != false,
+                     "The notification host must never receive a blur filter")
+        NotificationAppearance.shared.blurAmount = savedBlur
+        settle()
     }
     let originalAppearance = surface.appearance
     for system in [NSAppearance.Name.aqua, .darkAqua] {
@@ -110,14 +145,23 @@ func runPaneChecks() {
     surface.setContentHeight(120)
     surface.layoutSubtreeIfNeeded()
     precondition(surface.backdrop.frame.height == 186, "A short list must not leave a panel-sized backdrop")
-    let maskTemplate = surface.backdrop.maskImage
+    precondition(surface.compositor.frame.maxY == surface.bounds.maxY,
+                 "A short backdrop must stay anchored beneath the menu bar")
+    precondition(surface.compositor.layer?.frame == surface.compositor.frame,
+                 "The compositor root must retain AppKit's position when the backdrop shrinks")
+    let maskTemplate = surface.backdropMaskImage
     surface.setContentHeight(300)
     surface.layoutSubtreeIfNeeded()
     precondition(surface.backdrop.frame.height == 366, "Backdrop must follow visible content height")
-    precondition(surface.backdrop.maskImage === maskTemplate,
+    precondition(surface.backdropMaskImage === maskTemplate,
                  "Animated backdrop resizing must reuse its feathered image template")
+    let savedTransparency = NotificationAppearance.shared.transparency
     NotificationAppearance.shared.usesSystemBackdrop = false
+    NotificationAppearance.shared.transparency = 0.5
     settle()
+    precondition(surface.compositor.alphaValue == 1,
+                 "Strength must not crossfade blurred background with the sharp desktop")
+    NotificationAppearance.shared.transparency = savedTransparency
     precondition(surface.backdrop.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,
                  "Custom strength must keep the backdrop dark")
     surface.appearance = originalAppearance
@@ -185,6 +229,21 @@ func runPaneChecks() {
     settle()
     precondition(panel.isVisible, "Banner actions must reveal the same pane")
     controller.hide()
+    if (26...27).contains(ProcessInfo.processInfo.operatingSystemVersion.majorVersion),
+       !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+        let probe = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
+                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        probe.isOpaque = false; probe.backgroundColor = .clear
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 500))
+        let nested = NotificationPaneSurface(frame: NSRect(x: 20, y: 20, width: 444, height: 460), root: AnyView(Color.clear))
+        container.addSubview(nested)
+        probe.contentView = container
+        probe.orderFront(nil)
+        settle()
+        precondition(nested.compositor.isAvailable && !nested.compositor.isHidden && nested.compositor.blurLayer != nil,
+                     "The backdrop must remain available when attached beneath another view")
+        probe.orderOut(nil)
+    }
     print("Floating pane geometry, native blur, scrolling, Escape, menu toggle, focus dismissal and reopening checks passed")
 }
 

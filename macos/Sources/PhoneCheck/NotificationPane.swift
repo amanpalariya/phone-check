@@ -11,7 +11,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private let statusItem: NSStatusItem
     private var panel: NotificationPanel?
     private var testbedWindow: NSWindow?
-    private var appearanceWindow: NSWindow?
+    private var settingsController: CompanionSettingsController?
     private var subscriptions = Set<AnyCancellable>()
     private var outsideMonitor: Any?
     private var localMonitor: Any?
@@ -45,6 +45,29 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
             .sink { [weak self] _ in self?.trackingMenu = true }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)
             .sink { [weak self] _ in self?.trackingMenu = false }.store(in: &subscriptions)
+        let menu = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu(title: "Phone Check")
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        appMenu.addItem(settingsItem)
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Quit Phone Check", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        menu.addItem(appItem)
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu
+        menu.addItem(editItem)
+        let windowItem = NSMenuItem()
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        windowItem.submenu = windowMenu
+        menu.addItem(windowItem)
+        NSApp.mainMenu = menu
         updateStatusItem()
     }
 
@@ -103,7 +126,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 
     private func root(height: CGFloat, pointerOffset: CGFloat) -> AnyView {
         AnyView(CompanionView(model: model, testbed: testbed, showTestbed: { [weak self] in self?.showTestbed() },
-                              showAppearance: { [weak self] in self?.showAppearance() },
+                              showSettings: { [weak self] in self?.showSettings() },
                               pointerOffset: pointerOffset,
                               feedMaximumHeight: max(60, height - 220),
                               contentHeightChanged: { [weak self] height in
@@ -143,21 +166,10 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         outsideMonitor = nil; localMonitor = nil
     }
 
-    private func showAppearance() {
+    @objc func showSettings() {
         hide()
-        if appearanceWindow == nil {
-            let controller = NSHostingController(rootView: NotificationAppearanceSettings { [weak self] in
-                self?.appearanceWindow?.close()
-            })
-            let window = NSWindow(contentViewController: controller)
-            window.styleMask = [.titled, .closable, .miniaturizable]
-            window.title = "Appearance"
-            window.isReleasedWhenClosed = false
-            window.center()
-            appearanceWindow = window
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        appearanceWindow?.makeKeyAndOrderFront(nil)
+        if settingsController == nil { settingsController = CompanionSettingsController(model: model) }
+        settingsController?.show()
     }
 
     private func showTestbed() {
@@ -212,17 +224,36 @@ final class NotificationPanel: NSPanel {
             dismiss()
             return
         }
+        if event.type == .scrollWheel, let contentView {
+            var target = contentView.hitTest(contentView.convert(event.locationInWindow, from: nil))
+            while let view = target {
+                if view is NSScrollView { super.sendEvent(event); return }
+                target = view.superview
+            }
+            // Empty backdrop space owns its scroll events; never pass them on
+            // to a different window or the application underneath the pane.
+            return
+        }
         super.sendEvent(event)
     }
 }
 
-/// Localized backdrop, independent of the cards: native blur plus a soft dimming wash.
-/// Its extent follows the visible content rather than filling the entire panel.
+/// AppKit-managed behind-window blur stays below the SwiftUI notification tree.
+/// A minimally drawn input surface prevents transparent gaps from scrolling apps
+/// underneath the pane without changing any notification-card material.
 final class NotificationPaneSurface: NSView {
     let host: NSHostingView<AnyView>
     let backdrop = NSVisualEffectView()
     let compositor = CompositorBackdrop(frame: .zero)
+    private let inputSurface = NSView()
+    private let fallbackFeather = BackdropFeather()
+    private(set) var backdropMaskImage: NSImage?
     private let dimming = NSImageView()
+#if PHONECHECK_VISUAL_TEST
+    var suppressBackdropTint = false {
+        didSet { refreshAppearance() }
+    }
+#endif
     private var contentHeight: CGFloat = 240
     private var maskTemplateSize = NSSize.zero
     private var appearanceSubscription: AnyCancellable?
@@ -235,8 +266,13 @@ final class NotificationPaneSurface: NSView {
         backdrop.material = .underWindowBackground
         backdrop.blendingMode = .behindWindow
         backdrop.state = .active
+        backdrop.wantsLayer = true
+        inputSurface.wantsLayer = true
+        inputSurface.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.01).cgColor
+        inputSurface.setAccessibilityElement(false)
         addSubview(backdrop)
         addSubview(compositor)
+        addSubview(inputSurface)
         dimming.imageScaling = .scaleAxesIndependently
         dimming.setAccessibilityElement(false)
         addSubview(dimming)
@@ -268,6 +304,7 @@ final class NotificationPaneSurface: NSView {
     override func layout() {
         super.layout()
         layoutBackdrop()
+        refreshAppearance()
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -293,12 +330,17 @@ final class NotificationPaneSurface: NSView {
             dimming.alphaValue = 0
             return
         }
-        let strength = system ? 1 : 1 - transparency
-        // Keep the blur and dimming independent. Fading a tinted material alone
-        // leaves mostly sharp background and reads as a colored overlay.
-        compositor.alphaValue = strength
-        backdrop.alphaValue = 0.32 * strength
-        dimming.alphaValue = 0.22 * strength
+        let strength = 1 - transparency
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let tint = system ? (dark ? 0.10 : 0.08) : 0.08 + 0.32 * strength
+        // Never crossfade filtered output with the sharp desktop. Strength
+        // controls the dark wash; blur amount controls the background filter.
+        compositor.alphaValue = 1
+        backdrop.alphaValue = system ? 0.32 : 0.18 + 0.14 * strength
+        dimming.alphaValue = tint
+#if PHONECHECK_VISUAL_TEST
+        if suppressBackdropTint { dimming.alphaValue = 0 }
+#endif
     }
 
     private func layoutBackdrop() {
@@ -306,7 +348,8 @@ final class NotificationPaneSurface: NSView {
         let height = min(bounds.height, contentHeight + NotificationPaneLayout.contentTopInset + 64)
         let rect = NSRect(x: 0, y: bounds.maxY - height, width: bounds.width, height: height)
         guard rect.width > 0, rect.height > 0 else { return }
-        guard backdrop.frame != rect || backdrop.maskImage == nil else { return }
+        guard backdrop.frame != rect || backdropMaskImage == nil else { return }
+        inputSurface.frame = rect
         backdrop.frame = rect
         dimming.frame = rect
         compositor.frame = rect
@@ -321,10 +364,11 @@ final class NotificationPaneSurface: NSView {
                                           bottom: min(64, templateSize.height * 0.48),
                                           right: min(72, templateSize.width * 0.48))
             mask.resizingMode = .stretch
-            backdrop.maskImage = mask
+            backdropMaskImage = mask
             compositor.maskImage = mask
             dimming.image = mask
         }
+        fallbackFeather.apply(backdropMaskImage, to: backdrop.layer, bounds: backdrop.bounds)
     }
 
     private static func featheredMask(size: NSSize) -> NSImage {

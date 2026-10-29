@@ -102,6 +102,10 @@ internal class SecureLink(private val pairing: Pairing) : AutoCloseable {
         outgoing = SessionCipher(Wire.derive(pairing.secret, "c2s", material))
         incoming = SessionCipher(Wire.derive(pairing.secret, "s2c", material))
         socket.soTimeout = 45000
+        val model = android.os.Build.MODEL.trim()
+        if (model.isNotEmpty()) {
+            send(JSONObject().put("type", "device_info").put("deviceName", model.take(128)))
+        }
     }
     @Synchronized fun send(message: JSONObject) {
         Wire.write(output, outgoing.apply(message.toString().toByteArray(Charsets.UTF_8), true))
