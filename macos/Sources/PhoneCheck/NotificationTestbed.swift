@@ -85,9 +85,10 @@ struct NotificationTestbedView: View {
                         ForEach(NotificationFixtures.Kind.allCases) { kind in
                             Button { model.show(kind) } label: {
                                 HStack { Text(kind.rawValue); Spacer(); Image(systemName: "plus") }
+                                    .foregroundStyle(.primary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .contentShape(Rectangle())
-                            }.buttonStyle(.borderless).padding(.vertical, 4)
+                            }.buttonStyle(.borderless).tint(.primary).padding(.vertical, 4)
                                 .accessibilityLabel("Show \(kind.rawValue)")
                         }
                     }.padding(.horizontal, 2)

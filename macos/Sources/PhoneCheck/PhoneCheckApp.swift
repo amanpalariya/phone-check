@@ -72,7 +72,9 @@ struct CompanionView: View {
                 HStack {
                     Text("Testbed").font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Exit") { testbed.showsInPane = false }.buttonStyle(.borderless)
+                    Button { testbed.showsInPane = false } label: {
+                        Text("Exit").foregroundStyle(.primary)
+                    }.buttonStyle(.borderless).tint(.primary)
                 }.padding(.horizontal, 16).padding(.bottom, 8)
             }
             if showsSearch {
@@ -165,7 +167,9 @@ struct CompanionView: View {
                     Image(systemName: "bell.badge").foregroundStyle(.primary)
                     Text("Mac alerts off").font(.subheadline)
                     Spacer()
-                    Button("Enable", action: model.allowAlerts).buttonStyle(.bordered).controlSize(.small)
+                    Button(action: model.allowAlerts) {
+                        Text("Enable").foregroundStyle(.primary)
+                    }.buttonStyle(.bordered).tint(.primary).controlSize(.small)
                 }
                 .padding(12).background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                 .padding(.horizontal, 16).padding(.bottom, 8)

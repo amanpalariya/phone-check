@@ -239,11 +239,13 @@ private struct NotificationActionStyle: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if media {
             content.buttonStyle(.bordered).buttonBorderShape(.circle).controlSize(.small)
+                .tint(.primary).foregroundStyle(.primary)
         } else if call, let color {
             content.buttonStyle(.borderedProminent).buttonBorderShape(.capsule)
                 .tint(color).controlSize(.regular)
         } else {
             content.buttonStyle(.bordered).buttonBorderShape(.capsule).controlSize(.small)
+                .tint(.primary).foregroundStyle(.primary)
         }
     }
 }
