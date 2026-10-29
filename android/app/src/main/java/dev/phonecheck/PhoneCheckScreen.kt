@@ -1,5 +1,8 @@
 package dev.phonecheck
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -49,7 +52,10 @@ internal fun PhoneCheckScreen(
     onTestbed: () -> Unit,
     onUnpair: () -> Unit
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
+    var settingsPage by rememberSaveable { mutableStateOf<String?>(null) }
+    BackHandler(enabled = settingsPage != null) {
+        settingsPage = if (settingsPage == "Advanced") "Settings" else null
+    }
     var confirmUnpair by remember { mutableStateOf(false) }
     val connected = paired && access && network && status == "Connected"
     val symbol = when {
@@ -75,7 +81,16 @@ internal fun PhoneCheckScreen(
     }
 
     Surface(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
+        if (settingsPage != null) {
+            PhoneSettingsScreen(
+                advanced = settingsPage == "Advanced",
+                paired = paired,
+                onBack = { settingsPage = if (settingsPage == "Advanced") "Settings" else null },
+                onAdvanced = { settingsPage = "Advanced" },
+                onTestbed = onTestbed,
+                onUnpair = { confirmUnpair = true }
+            )
+        } else Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
             Column(
                 Modifier.align(Alignment.TopCenter).widthIn(max = 440.dp).fillMaxWidth()
                     .verticalScroll(rememberScrollState()).padding(horizontal = 28.dp)
@@ -85,19 +100,9 @@ internal fun PhoneCheckScreen(
                         tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(23.dp))
                     Text("Phone Check", style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(start = 9.dp).weight(1f))
-                    Box {
-                            IconButton(onClick = { menuOpen = true }) {
-                                Icon(painterResource(R.drawable.ic_more), contentDescription = "Settings", modifier = Modifier.size(22.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                                DropdownMenuItem(text = { Text("Notification testbed") }, onClick = {
-                                    menuOpen = false; onTestbed()
-                                })
-                                if (paired) DropdownMenuItem(text = { Text("Unpair Mac") }, onClick = {
-                                    menuOpen = false; confirmUnpair = true
-                                })
-                            }
+                    IconButton(onClick = { settingsPage = "Settings" }) {
+                        Icon(painterResource(R.drawable.ic_more), contentDescription = "Settings",
+                            modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -140,6 +145,41 @@ internal fun PhoneCheckScreen(
             title = { Text("Unpair Mac?") },
             confirmButton = { TextButton(onClick = { onUnpair(); confirmUnpair = false }) { Text("Unpair") } },
             dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Cancel") } })
+    }
+}
+
+@Composable
+private fun PhoneSettingsScreen(
+    advanced: Boolean,
+    paired: Boolean,
+    onBack: () -> Unit,
+    onAdvanced: () -> Unit,
+    onTestbed: () -> Unit,
+    onUnpair: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
+            .verticalScroll(rememberScrollState()).padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Column(Modifier.widthIn(max = 440.dp).fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onBack) { Text("Back") }
+                Text(if (advanced) "Advanced" else "Settings", style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(start = 12.dp))
+            }
+            if (advanced) {
+                ListItem(headlineContent = { Text("Notification testbed") },
+                    modifier = Modifier.clickable(onClick = onTestbed))
+            } else {
+                ListItem(headlineContent = { Text("Advanced") },
+                    modifier = Modifier.clickable(onClick = onAdvanced))
+                if (paired) {
+                    ListItem(headlineContent = { Text("Unpair Mac") },
+                        modifier = Modifier.clickable(onClick = onUnpair))
+                }
+            }
+        }
     }
 }
 

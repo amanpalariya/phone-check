@@ -81,7 +81,7 @@ Unpair on both devices to replace a phone, replace a Mac, or change a Mac addres
 
 ## Notification testbed
 
-Open the Android overflow menu → **Notification testbed**. Post samples individually or together; use **Update** for progress and **Clear** to remove samples. Receipts show actual Android action execution, taps, replies, and removals.
+Open Android **Settings → Advanced → Notification testbed**. Post samples individually or together; use **Update** for progress and **Clear** to remove samples. Receipts show actual Android action execution, taps, replies, and removals.
 
 Twenty scenarios cover text, expanded text, inbox, conversations, pictures, progress, groups, ongoing, buttons, media, calls, silent/private content, custom layouts, canceled intents, unlock-required actions, fixed choices, attachment-only and multiple-input actions. These are real Android notifications, including a short-lived foreground service for the call sample.
 
