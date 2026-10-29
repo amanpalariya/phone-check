@@ -254,8 +254,8 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private func installMonitors() {
         removeMonitors()
         outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
-            guard let self, !statusButtonContainsMouse else { return }
-            hide()
+            // macOS also delivers status-item clicks here while its session is open.
+            self?.hide()
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             guard let self else { return event }
