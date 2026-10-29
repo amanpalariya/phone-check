@@ -22,7 +22,9 @@ struct PairingQRCodeView: View {
     var body: some View {
         if let image = PairingQRCode.image(for: code) {
             Image(image, scale: 1, label: Text("Pairing QR code"))
+                .renderingMode(.original)
                 .interpolation(.none).resizable().scaledToFit()
+                .foregroundStyle(.black)
                 .frame(width: 164, height: 164)
                 .padding(20).background(.white, in: RoundedRectangle(cornerRadius: 12))
                 .accessibilityHint("Scan with Phone Check on Android, or use Copy code.")

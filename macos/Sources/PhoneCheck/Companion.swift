@@ -28,7 +28,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     private var phoneAttention = PhoneAttentionState()
     private var staged: [Notice]?
     private var stagedBytes = 0
-    private var pairExpiry: Date?
+    @Published private(set) var pairingExpiresAt: Date?
     private var heartbeat: Timer?
     private var pairingTimer: Timer?
     private var syncDeadline: Timer?
@@ -62,6 +62,15 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
     }
     #if PHONECHECK_VISUAL_TEST
+    func showPairingPreview(active: Bool = true) {
+        listening = true
+        guard active else { return }
+        host = "192.168.1.10"
+        addresses = [host, "10.0.0.2"]
+        credentials = Credentials(secret: Data(repeating: 7, count: 32), peer: nil)
+        pairing = true
+        pairingExpiresAt = Date().addingTimeInterval(299)
+    }
     func showPreview(_ items: [Notice], battery: BatteryStatus? = nil) {
         self.battery = battery
         notices = items; paired = true; connected = true; listening = true
@@ -103,13 +112,17 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         do {
             let next = Credentials(secret: Wire.random(), peer: nil)
             try next.save(); credentials = next
-            pairing = true; error = nil; pairExpiry = Date().addingTimeInterval(300)
+            pairing = true; error = nil; pairingExpiresAt = Date().addingTimeInterval(300)
             pairingTimer?.invalidate()
-            pairingTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: false) { [weak self] _ in self?.cancelPairing() }
+            pairingTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                self.cancelPairing()
+                self.error = "Pairing code expired. Try again."
+            }
         } catch { self.error = "Could not save pairing" }
     }
     func cancelPairing() {
-        pairing = false; pairExpiry = nil; pairingTimer?.invalidate()
+        pairing = false; pairingExpiresAt = nil; pairingTimer?.invalidate()
         if !paired {
             credentials = nil
             do { try Credentials.clear() } catch { self.error = "Could not clear pairing" }
@@ -118,7 +131,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     }
     func unpair() {
         do { try Credentials.clear() } catch { self.error = "Could not clear pairing"; return }
-        credentials = nil; phoneName = nil; paired = false; pairing = false; pairExpiry = nil
+        credentials = nil; phoneName = nil; paired = false; pairing = false; pairingExpiresAt = nil
         pairingTimer?.invalidate()
         active?.close(); Array(candidates.values).forEach { $0.close() }
         clearActive(); status = "Not paired"; error = nil
@@ -126,7 +139,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     }
     private func accept(_ connection: NWConnection) {
         guard candidates.count < 4, let credentials,
-              credentials.peer != nil || (pairing && (pairExpiry ?? .distantPast) > Date()) else { connection.cancel(); return }
+              credentials.peer != nil || (pairing && (pairingExpiresAt ?? .distantPast) > Date()) else { connection.cancel(); return }
         let id = UUID(), serverNonce = Wire.random()
         let client = FramedConnection(connection)
         candidates[id] = client
@@ -149,7 +162,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
                   let nonce = message.nonce.flatMap({ Data(base64Encoded: $0) }), nonce.count == 32,
                   let proof = message.proof.flatMap({ Data(base64Encoded: $0) }), proof.count == 32,
                   let current = self.credentials, current.secret == credentials.secret,
-                  (current.peer == peer || (current.peer == nil && self.pairing && (self.pairExpiry ?? .distantPast) > Date())) else { client.close(); return }
+                  (current.peer == peer || (current.peer == nil && self.pairing && (self.pairingExpiresAt ?? .distantPast) > Date())) else { client.close(); return }
             let material = Wire.material(serverNonce, nonce, peer)
             guard Wire.verify(proof, secret: current.secret, label: "client-proof", material: material) else { client.close(); return }
             do {
@@ -158,7 +171,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             } catch { self.error = "Could not save pairing"; client.close(); return }
             self.active?.close(); self.clearActive()
             self.active = client; authenticated = true
-            self.paired = true; self.pairing = false; self.pairExpiry = nil; self.pairingTimer?.invalidate()
+            self.paired = true; self.pairing = false; self.pairingExpiresAt = nil; self.pairingTimer?.invalidate()
             self.status = "Syncing…"; self.error = nil
             var ready = Message("ready")
             ready.proof = Wire.derive(current.secret, label: "server-proof", material: material).base64EncodedString()

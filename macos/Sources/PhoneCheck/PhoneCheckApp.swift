@@ -18,10 +18,10 @@ final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
         let model = Companion()
         let controller = NotificationPaneController(model: model)
         pane = controller
-        if !model.paired { controller.showSettings() }
+        if !model.paired { controller.show() }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        pane?.showSettings()
+        pane?.show()
         return false
     }
 }
@@ -58,6 +58,8 @@ struct CompanionView: View {
             }
         }
         .onPreferenceChange(CompanionHeight.self, perform: contentHeightChanged)
+        .notificationMotion(value: model.pairing)
+        .notificationMotion(value: model.paired)
         .notificationMotion(value: model.notices)
         .notificationMotion(value: displayedNotices)
         .tint(.accentColor)
@@ -89,7 +91,7 @@ struct CompanionView: View {
                 }
             } else {
                 if !model.paired {
-                    welcome
+                    PairingPane(model: model)
                 } else {
                     pairedContent
                 }
@@ -130,7 +132,7 @@ struct CompanionView: View {
     }
 
     private var showsSearch: Bool {
-        !displayedNotices.isEmpty || !presentation.query.isEmpty
+        (showsSamples || model.paired) && (!displayedNotices.isEmpty || !presentation.query.isEmpty)
     }
 
     private var header: some View {
@@ -161,14 +163,6 @@ struct CompanionView: View {
             .frame(width: 82, height: 28, alignment: .trailing)
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
-    }
-
-    private var welcome: some View {
-        VStack(spacing: 14) {
-            Text("Pair your phone").font(.title2.weight(.semibold))
-            Button("Open Settings…", action: showSettings)
-                .modifier(NativePrimaryAction())
-        }.frame(maxWidth: .infinity).padding(24)
     }
 
     private var pairedContent: some View {
@@ -207,7 +201,7 @@ struct CompanionView: View {
 }
 
 // Native styles retain system Liquid Glass, focus, pressed, and accessibility behavior.
-private struct NativePrimaryAction: ViewModifier {
+struct NativePrimaryAction: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
             content.buttonStyle(.glassProminent).controlSize(.large)

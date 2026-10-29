@@ -1,5 +1,13 @@
 # Validation — October 27, 2026
 
+## Pairing in the Mac panel — October 29, 2026
+
+- Moved pairing into the menu-bar panel: device welcome, QR code, actual expiry countdown, optional Mac address selector, cancellation, and copy confirmation. First launch/reopening opens the panel; Settings routes pairing there and retains phone management.
+- Development Mac build and ad hoc packaging passed. Existing pane geometry/interaction checks passed. QR decoding checks passed for three addresses in light and dark.
+- Inspected the native welcome and QR surfaces through computer use in light/dark, verified the countdown and Copy code → Copied feedback. Fixed native dark-mode QR contrast by preserving original image colors and using a light QR surface. Cached view rendering cannot reproduce native glass; final appearance was checked in the live fixture.
+- Pairing polish: replaced blue text actions with equal-width native filled buttons (red Cancel, neutral Copy code), with contrasting labels in each appearance, and increased the expiry countdown to medium-weight callout text.
+- Updated and relaunched `/Applications/Phone Check.app`. Physical-phone pairing, cancellation/expiry, and the transition after authenticated connection were reviewed in source but were not rerun on a physical phone.
+
 ## Phone battery header — October 29, 2026
 
 - Added OS battery/Battery Saver capture, shared encrypted `device_status` messages, and a Mac header battery indicator with percentage, green charging bolt, and amber Battery Saver leaf. Both indicators can appear together. Removed the header notification count; menu-bar counting is unchanged. Unknown/disconnected readings use an em dash and an accessible status label.

@@ -295,14 +295,24 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         hide()
         if settingsController == nil {
             #if DEBUG
-            settingsController = CompanionSettingsController(model: model, showTestbed: { [weak self] in
+            settingsController = CompanionSettingsController(model: model, showPairing: { [weak self] in
+                self?.showPairing()
+            }, showTestbed: { [weak self] in
                 self?.showTestbed()
             })
             #else
-            settingsController = CompanionSettingsController(model: model)
+            settingsController = CompanionSettingsController(model: model, showPairing: { [weak self] in
+                self?.showPairing()
+            })
             #endif
         }
         settingsController?.show()
+    }
+
+    private func showPairing() {
+        settingsController?.window.orderOut(nil)
+        if !model.pairing { model.beginPairing() }
+        show()
     }
 
     #if DEBUG

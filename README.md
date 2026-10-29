@@ -70,6 +70,8 @@ open -n macos/build/PhoneCheckMaterialReview.app --args --pane-blur-review
 open macos/build/PhoneCheckMaterialReview.app --args --pane-blur-review --scroll-through-review --more
 # Live panel preview with local samples:
 open -n macos/build/PhoneCheckMaterialReview.app --args --pane
+# Preview welcome and QR pairing surfaces (add --dark for dark appearance):
+open -n macos/build/PhoneCheckMaterialReview.app --args --pairing-review
 ```
 
 Add `--single` (without `--more`) to check short-list alignment, or `--no-backdrop-tint` to inspect blur independently of the dark wash. The fixed defaults use blur 1 with a 2.5% dark wash in light mode and 3.5% in dark mode.
@@ -92,7 +94,7 @@ swiftc -parse-as-library macos/Sources/PhoneCheck/PairingQRCode.swift tests/ui/P
 
 ## Pair
 
-1. Open **Settings…** from the Mac companion’s gear menu (or press **⌘,**) and choose **Pair phone** in the Phone tab. Settings shows the paired phone, connection status, and **Unpair…**; development builds also have an Advanced tab with the notification testbed.
+1. Click the Mac menu-bar icon and choose **Pair phone**. Scan the QR code right in the panel; its countdown shows when the code expires. Settings shows the paired phone, connection status, and **Unpair…**; development builds also have an Advanced tab with the notification testbed.
 2. Tap **Scan QR code** in the Android app and scan the Mac’s QR code within five minutes. Or choose **Enter code instead** on Android and **Copy code** on Mac. Both devices must be on the same private IPv4 LAN; choose the Mac's Wi-Fi address if several addresses appear. Guest Wi-Fi client isolation can prevent connections.
 3. Grant Android notification access and, on Android 17+, local network access. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
 4. Enable Mac notifications in the companion. Allow local network access if macOS asks.

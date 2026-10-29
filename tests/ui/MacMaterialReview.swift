@@ -78,6 +78,7 @@ struct MaterialReview {
         window.contentView = NSHostingView(rootView: Group {
             if CommandLine.arguments.contains("--testbed") { NotificationTestbedView() }
             else if CommandLine.arguments.contains("--battery") { BatteryReview() }
+            else if CommandLine.arguments.contains("--pairing-review") { PairingReview() }
             else if CommandLine.arguments.contains("--setup") { Review() } else { RichReview() }
         })
         if let flag = CommandLine.arguments.firstIndex(of: "--render"), CommandLine.arguments.count > flag + 1 {
@@ -367,5 +368,28 @@ private struct BatteryReview: View {
                 percentage: 73, charging: CommandLine.arguments.contains("--charging"),
                 powerSaving: CommandLine.arguments.contains("--saver")))
         }
+    }
+}
+
+/// Deterministic pairing surfaces without listener or credential storage access.
+private struct PairingReview: View {
+    @StateObject private var welcome: Companion = {
+        let model = Companion(startServices: false)
+        model.showPairingPreview(active: false)
+        return model
+    }()
+    @StateObject private var pairing: Companion = {
+        let model = Companion(startServices: false)
+        model.showPairingPreview()
+        return model
+    }()
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 32) {
+            CompanionView(model: welcome)
+            CompanionView(model: pairing)
+        }
+        .padding(28)
+        .environment(\.colorScheme, CommandLine.arguments.contains("--dark") ? .dark : .light)
     }
 }

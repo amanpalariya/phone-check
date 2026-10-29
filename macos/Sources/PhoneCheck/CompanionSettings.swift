@@ -6,11 +6,11 @@ final class CompanionSettingsController {
     let window: NSWindow
     private let tabs: NSTabViewController
 
-    init(model: Companion, showTestbed: @escaping () -> Void = {}) {
+    init(model: Companion, showPairing: @escaping () -> Void = {}, showTestbed: @escaping () -> Void = {}) {
         tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
         tabs.title = "Phone Check Settings"
-        let phone = NSTabViewItem(viewController: NSHostingController(rootView: PhoneSettingsView(model: model)))
+        let phone = NSTabViewItem(viewController: NSHostingController(rootView: PhoneSettingsView(model: model, showPairing: showPairing)))
         phone.label = "Phone"
         phone.image = NSImage(systemSymbolName: "iphone", accessibilityDescription: "Phone")
         #if DEBUG
@@ -67,6 +67,7 @@ private final class PhoneSettingsState: ObservableObject {
 
 struct PhoneSettingsView: View {
     @ObservedObject var model: Companion
+    var showPairing: () -> Void = {}
     @StateObject private var state = PhoneSettingsState()
 
     var body: some View {
@@ -91,10 +92,8 @@ struct PhoneSettingsView: View {
                         Spacer(minLength: 8)
                         if model.paired {
                             Button("Unpair…") { state.confirmsUnpair = true }
-                        } else if !model.pairing {
-                            Button(model.listening ? "Pair phone" : "Retry connection") {
-                                if model.listening { model.beginPairing() } else { model.startListening() }
-                            }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                        } else {
+                            Button("Pair phone", action: showPairing).buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                         }
                     }.padding(12)
                 }
@@ -129,8 +128,6 @@ struct PhoneSettingsView: View {
                             }
                         }.padding(12)
                     }
-                } else if model.pairing {
-                    pairing
                 } else {
                     Text("Both devices need to be on the same Wi-Fi.")
                         .font(.callout).foregroundStyle(.secondary)
@@ -153,34 +150,4 @@ struct PhoneSettingsView: View {
         }
     }
 
-    private var pairing: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("Scan with Phone Check on Android.").font(.headline)
-                Spacer()
-                Text("Expires in 5 minutes").font(.caption).foregroundStyle(.secondary)
-            }
-            if model.addresses.count > 1 {
-                Picker("Mac address", selection: $model.host) {
-                    ForEach(model.addresses, id: \.self) { Text($0).tag($0) }
-                }
-            }
-            PairingQRCodeView(code: model.code)
-                .frame(maxWidth: .infinity)
-            DisclosureGroup("Enter code instead") {
-                Text(model.code).font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled).lineLimit(nil)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
-            }
-            HStack {
-                Button("Cancel", action: model.cancelPairing)
-                Spacer()
-                Button("Copy code") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(model.code, forType: .string)
-                }
-            }
-        }
-    }
 }
