@@ -16,6 +16,9 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private var outsideMonitor: Any?
     private var localMonitor: Any?
     private var trackingMenu = false
+#if PHONECHECK_VISUAL_TEST
+    var statusButtonForChecks: NSStatusBarButton { statusItem.button! }
+#endif
 
     init(model: Companion, testbed: NotificationTestbed) {
         self.model = model
@@ -23,8 +26,13 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
         if let button = statusItem.button {
-            button.target = self
-            button.action = #selector(toggle)
+            if #available(macOS 27.0, *) {
+                statusItem.expandedInterfaceDelegate = self
+            } else {
+                button.target = self
+                button.action = #selector(toggle)
+                button.sendAction(on: [.leftMouseDown])
+            }
             button.imagePosition = .imageLeading
             button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         }
@@ -87,6 +95,10 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        presentPane()
+    }
+
+    private func presentPane() {
         guard let screen = statusItem.button?.window?.screen ?? NSScreen.main else { return }
         let anchor = statusItem.button.flatMap { button in
             button.window?.convertToScreen(button.convert(button.bounds, to: nil))
@@ -119,9 +131,25 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
                                                        root: root(height: frame.height, pointerOffset: (anchor?.midX ?? frame.midX) - frame.midX))
         }
         panel.makeKeyAndOrderFront(nil)
+        updateStatusHighlight()
         // Start with no search focus; Tab and clicking still enter native editors.
         panel.makeFirstResponder(panel.contentView)
         installMonitors()
+    }
+
+    private func updateStatusHighlight() {
+        // Modern AppKit owns the menu-bar selection through its session.
+        if #available(macOS 27.0, *) { return }
+        statusItem.button?.highlight(panel?.isVisible == true)
+        // NSStatusBarButton renders its menu-bar background from highlight(),
+        // not state. AppKit clears highlighting when mouse tracking ends, so
+        // restore it after the click action has returned.
+        // Use the default run-loop mode: a main-queue block can run inside
+        // AppKit's nested mouse-tracking loop, before it clears the highlight.
+        RunLoop.main.perform(inModes: [.default]) { [weak self] in
+            guard let self else { return }
+            statusItem.button?.highlight(self.panel?.isVisible == true)
+        }
     }
 
     private func root(height: CGFloat, pointerOffset: CGFloat) -> AnyView {
@@ -137,19 +165,35 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     }
 
     func hide() {
+        closePane()
+        if #available(macOS 27.0, *) { statusItem.expandedInterfaceSession?.cancel() }
+    }
+
+    private func closePane() {
         panel?.orderOut(nil)
+        updateStatusHighlight()
         removeMonitors()
     }
 
     func windowDidResignKey(_ notification: Notification) {
         guard (notification.object as? NSWindow) === panel, panel?.attachedSheet == nil, !trackingMenu else { return }
+        // Clicking the status button may resign key before its action runs.
+        // Let that action own the toggle instead of closing and then reopening.
+        if NSEvent.pressedMouseButtons != 0 && statusButtonContainsMouse { return }
         hide()
+    }
+
+    private var statusButtonContainsMouse: Bool {
+        guard let button = statusItem.button, let window = button.window else { return false }
+        let bounds = window.convertToScreen(button.convert(button.bounds, to: nil))
+        return bounds.contains(NSEvent.mouseLocation)
     }
 
     private func installMonitors() {
         removeMonitors()
         outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] _ in
-            self?.hide()
+            guard let self, !statusButtonContainsMouse else { return }
+            hide()
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
             guard let self else { return event }
@@ -195,6 +239,17 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         if let outsideMonitor { NSEvent.removeMonitor(outsideMonitor) }
         if let localMonitor { NSEvent.removeMonitor(localMonitor) }
         NSStatusBar.system.removeStatusItem(statusItem)
+    }
+}
+
+@available(macOS 27.0, *)
+extension NotificationPaneController: NSStatusItemExpandedInterfaceDelegate {
+    func statusItem(_ statusItem: NSStatusItem, didBegin session: NSStatusItemExpandedInterfaceSession) {
+        presentPane()
+    }
+
+    func statusItemDidEndExpandedInterfaceSession(_ statusItem: NSStatusItem, animated: Bool) {
+        closePane()
     }
 }
 

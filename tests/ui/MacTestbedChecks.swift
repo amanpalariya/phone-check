@@ -62,6 +62,7 @@ func runTestbedChecks() {
 
 
 func runPaneChecks() {
+    NSApp.finishLaunching()
     let screen = NSRect(x: -1440, y: 180, width: 1440, height: 850)
     let anchor = NSRect(x: -800, y: screen.maxY, width: 30, height: 24)
     let frame = NotificationPaneLayout.frame(in: screen, anchor: anchor)
@@ -80,11 +81,23 @@ func runPaneChecks() {
     testbed.showAll()
     testbed.showsInPane = true
     let controller = NotificationPaneController(model: model, testbed: testbed)
+    let statusButton = controller.statusButtonForChecks
+    func checkHighlight(_ expected: Bool, _ context: String) {
+        // On macOS 27+, actual menu-bar input owns an AppKit expanded session.
+        // Programmatic pane checks do not enter that system tracking session.
+        if #available(macOS 27.0, *) { return }
+        let actual = statusButton.cell?.isHighlighted == true
+        if actual != expected {
+            fputs("Status highlight failure (\(context)): expected \(expected), got \(actual)\n", stderr)
+            fatalError("Incorrect status button highlight")
+        }
+    }
     func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.3)) }
     controller.show()
     settle()
     let panel = NSApp.windows.compactMap { $0 as? NotificationPanel }.first!
     precondition(panel.isVisible && !panel.isOpaque && !panel.hasShadow)
+    checkHighlight(true, "opening")
     precondition(panel.styleMask.contains(.nonactivatingPanel) && !panel.styleMask.contains(.titled))
     let surface = panel.contentView as! NotificationPaneSurface
     precondition(surface.compositor.window === panel && surface.host.window === panel,
@@ -197,6 +210,7 @@ func runPaneChecks() {
                                   charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)!
     panel.sendEvent(escape)
     precondition(!panel.isVisible, "Escape must close the pane")
+    checkHighlight(false, "Escape")
     controller.show()
     NotificationCenter.default.post(name: NSMenu.didBeginTrackingNotification, object: NSMenu())
     controller.windowDidResignKey(Notification(name: NSWindow.didResignKeyNotification, object: panel))
@@ -204,14 +218,19 @@ func runPaneChecks() {
     NotificationCenter.default.post(name: NSMenu.didEndTrackingNotification, object: NSMenu())
     precondition(panel.contentView === surface, "Reopening must preserve presentation state")
     controller.perform(NSSelectorFromString("toggle"))
+    settle()
     precondition(!panel.isVisible, "Menu-bar toggle must close the pane")
+    checkHighlight(false, "button close")
     controller.perform(NSSelectorFromString("toggle"))
+    settle()
     precondition(panel.isVisible, "Menu-bar toggle must reopen the pane")
+    checkHighlight(true, "button reopen after tracking")
     let other = NSWindow(contentRect: NSRect(x: 10, y: 10, width: 100, height: 100),
                          styleMask: [.titled], backing: .buffered, defer: false)
     other.makeKeyAndOrderFront(nil)
     settle()
     precondition(!panel.isVisible, "Moving focus to another window must close the pane")
+    checkHighlight(false, "focus dismissal")
     other.orderOut(nil)
     controller.show()
     NotificationCenter.default.post(name: .init("PhoneCheckShow"), object: nil)
