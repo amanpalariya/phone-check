@@ -15,8 +15,25 @@ struct PhoneCheckCoreTests {
         try tests.testNotificationGroupsPreserveMembersAndAppBoundaries()
         try tests.testRepeatedKeysAndGroupSummariesDoNotInflateCounts()
         try tests.testSummaryFirstMessageUpdatesAcrossApps()
-        print("10 core checks passed")
+        try tests.testBatteryMessage()
+        print("11 core checks passed")
         try FirebaseChecks.run()
+    }
+    func testBatteryMessage() throws {
+        // The Android JSON shape, including a missing/unknown battery percentage.
+        for json in [#"{"type":"device_status","battery":{"percentage":42,"charging":true,"powerSaving":true}}"#,
+                     #"{"type":"device_status","battery":{"percentage":42,"charging":true}}"#,
+                     #"{"type":"device_status","battery":{"percentage":null,"charging":false}}"#] {
+            let message = try Wire.decode(Data(json.utf8))
+            try check(message.battery?.isValid == true)
+            let decoded = try Wire.decode(Wire.json(message))
+            try check(decoded.battery == message.battery)
+        }
+        for percentage in [-1, 101] {
+            try check(!BatteryStatus(percentage: percentage, charging: false).isValid)
+        }
+        try check(BatteryStatus(percentage: 0, charging: false).isValid)
+        try check(BatteryStatus(percentage: 100, charging: true).isValid)
     }
     private func notice(_ revision: String = "one", key: String = "k") -> Notice {
         Notice(key: key, app: "Mail", title: "Subject", body: "Text", revision: revision, dismissible: true, postedAt: 1)

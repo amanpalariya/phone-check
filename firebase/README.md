@@ -116,3 +116,5 @@ Official references checked October 28, 2026:
 [RTDB rules](https://firebase.google.com/docs/database/security/core-syntax),
 [Android interactive state](https://developer.android.com/reference/android/os/PowerManager#isInteractive()),
 [Android keyguard state](https://developer.android.com/reference/android/app/KeyguardManager#isKeyguardLocked()).
+
+Device battery status uses the shared encrypted `device_status` payload described in [the protocol](../protocol/README.md). Battery capture and Mac presentation require no Firebase-specific logic. Production cloud provisioning remains pending a Firebase project.

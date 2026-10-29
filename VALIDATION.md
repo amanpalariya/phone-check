@@ -1,5 +1,14 @@
 # Validation — October 27, 2026
 
+## Phone battery header — October 29, 2026
+
+- Added OS battery/Battery Saver capture, shared encrypted `device_status` messages, and a Mac header battery indicator with percentage, green charging bolt, and amber Battery Saver leaf. Both indicators can appear together. Removed the header notification count; menu-bar counting is unchanged. Unknown/disconnected readings use an em dash and an accessible status label.
+- Android debug/release APK builds passed. All 13 debug unit tests passed; debug lint: 0 errors, 9 warnings, 2 hints. Battery tests cover scale normalization, invalid/missing readings, absent batteries, integer overflow, and JSON shape.
+- Mac debug/release builds and ad hoc packaging passed. 11 core checks and 7 Firebase/device-state check groups passed, including Android-shaped battery JSON and ordered encrypted battery changes over the Firebase mailbox fixture. No live Firebase project was used.
+- API 37 emulator battery integration passed against the production Mac companion model: initial 73%, Battery Saver enabled/disabled without a level change, Battery Saver retained across reconnect, charging change, live 19%, reconnect snapshot, clearing on access revocation, and 100% after restoration. The existing notification post/update/confirmed-dismiss/reconnect/revoke flow also passed. Emulator battery overrides and Battery Saver were reset in cleanup.
+- Rendered the native header in light/dark fixtures and checked percentage/icon spacing, simultaneous saver/charging symbols, and centered title. The app-owned renderer does not reproduce the desktop compositor backdrop; live computer-use inspection timed out. Physical-phone battery and vendor power behavior remain unverified (only an emulator was connected).
+- Installed the updated development Mac app in `/Applications/Phone Check.app`, verified its signature, and relaunched it. Android APKs are built; no physical phone was installed. Deploy both updated apps together: older Mac builds reject the new message type. Production Firebase provisioning remains pending a project.
+
 ## Development and release separation — October 29, 2026
 
 - Built and ad hoc signed both Mac configurations; left `macos/build/Phone Check.app` as development and copied it to `/Applications/Phone Check.app`; verified its signature and launched it. Verified the development executable has no Keychain item API references; release retains Keychain item APIs and contains no testbed/fixture symbols.

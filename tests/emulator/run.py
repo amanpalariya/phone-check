@@ -92,7 +92,7 @@ with tempfile.TemporaryDirectory(prefix='phonecheck-e2e-') as temp:
         reports = ROOT/'android/app/build/reports/emulator'
         reports.mkdir(parents=True, exist_ok=True)
         completed = []
-        suites = args.suite or ['PermissionUiTest', 'NotificationFlowTest', 'RichNotificationTest']
+        suites = args.suite or ['PermissionUiTest', 'NotificationFlowTest', 'RichNotificationTest', 'BatterySyncTest']
         if args.native_alerts: suites.append('NativeAlertSmokeTest')
         if suites[0] != 'PermissionUiTest':
             device('shell', 'cmd', 'notification', 'allow_listener', 'dev.phonecheck/dev.phonecheck.NotificationBridge')

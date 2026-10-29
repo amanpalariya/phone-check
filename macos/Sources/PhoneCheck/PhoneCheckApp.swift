@@ -147,20 +147,14 @@ struct CompanionView: View {
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden)
             .fixedSize().tint(.primary).help("Settings").accessibilityLabel("Settings")
+            .frame(width: 82, alignment: .leading)
             Spacer(minLength: 0)
             Text("Phone Check").font(.headline)
             Spacer(minLength: 0)
-            HStack(spacing: 6) {
-                if showsSamples || model.connected {
-                    let count = showsSamples ? NotificationSection.count(displayedNotices) : model.notificationCount
-                    Text("\(count)").font(.caption).monospacedDigit()
-                        .accessibilityLabel("\(count) notifications")
-                }
-                Circle().fill(showsSamples ? Color.orange : model.connected ? Color.green : Color.secondary)
-                    .frame(width: 6, height: 6)
-                    .help(showsSamples ? "Testbed" : model.status)
-                    .accessibilityLabel(showsSamples ? "Testbed" : model.status)
-            }.frame(minWidth: 28, minHeight: 28)
+            PhoneBatteryIndicator(battery: showsSamples ? nil : model.battery,
+                                  connected: !showsSamples && model.connected,
+                                  status: showsSamples ? "Testbed" : model.status)
+                .frame(width: 82, alignment: .trailing)
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
     }

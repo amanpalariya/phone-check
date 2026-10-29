@@ -11,11 +11,26 @@ enum FirebaseChecks {
     static func run() throws {
         try orderedDeliveryAndDuplicates()
         try goldenFrame()
+        try batteryDelivery()
         try rejectsGapsTamperingExpiredAndOtherSessions()
         try boundsAndFailures()
         try configurationAndAttention()
         try streamFraming()
-        print("6 Firebase/attention check groups passed")
+        print("7 Firebase/device-state check groups passed")
+    }
+    static func batteryDelivery() throws {
+        let bus = MailboxFixture(), config = try session()
+        let phone = FirebaseConnection(mailbox: bus.client(), session: config, isPhone: true, now: { 100_000 })
+        let mac = FirebaseConnection(mailbox: bus.client(), session: config, now: { 100_000 })
+        var readings: [BatteryStatus] = []
+        mac.onMessage = { if let battery = $0.battery { readings.append(battery) } }
+        phone.start(); mac.start()
+        for battery in [BatteryStatus(percentage: 42, charging: false), BatteryStatus(percentage: 42, charging: true, powerSaving: true)] {
+            var message = Message("device_status"); message.battery = battery; phone.send(message)
+        }
+        bus.drain()
+        try expect(readings == [BatteryStatus(percentage: 42, charging: false), BatteryStatus(percentage: 42, charging: true, powerSaving: true)])
+        phone.close(); mac.close()
     }
     static func goldenFrame() throws {
         let bus = MailboxFixture()

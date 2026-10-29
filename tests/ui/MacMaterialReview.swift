@@ -28,7 +28,14 @@ struct MaterialReview {
             let testbed = NotificationTestbed()
             testbed.showAll()
             testbed.showsInPane = true
-            let controller = NotificationPaneController(model: Companion(startServices: false), testbed: testbed)
+            let model = Companion(startServices: false)
+            if CommandLine.arguments.contains("--battery") {
+                testbed.showsInPane = false
+                model.showPreview(NotificationFixtures.make(.text), battery: BatteryStatus(
+                percentage: 73, charging: CommandLine.arguments.contains("--charging"),
+                powerSaving: CommandLine.arguments.contains("--saver")))
+            }
+            let controller = NotificationPaneController(model: model, testbed: testbed)
             controller.show()
             withExtendedLifetime(controller) { app.run() }
             return
@@ -70,6 +77,7 @@ struct MaterialReview {
         window.title = "Phone Check — Material Review"
         window.contentView = NSHostingView(rootView: Group {
             if CommandLine.arguments.contains("--testbed") { NotificationTestbedView() }
+            else if CommandLine.arguments.contains("--battery") { BatteryReview() }
             else if CommandLine.arguments.contains("--setup") { Review() } else { RichReview() }
         })
         if let flag = CommandLine.arguments.firstIndex(of: "--render"), CommandLine.arguments.count > flag + 1 {
@@ -342,6 +350,22 @@ private final class BlurReviewPattern: NSView {
             let text = "Background detail · 0123456789 · sharp letters · "
             (String(repeating: text, count: 4) as NSString).draw(at: NSPoint(x: 0, y: y),
                 withAttributes: [.font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.black])
+        }
+    }
+}
+
+private struct BatteryReview: View {
+    @StateObject private var model = Companion(startServices: false)
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            CompanionView(model: model).environment(\.colorScheme, .light)
+            CompanionView(model: model).environment(\.colorScheme, .dark)
+        }
+        .padding(8)
+        .onAppear {
+            model.showPreview(NotificationFixtures.make(.text), battery: BatteryStatus(
+                percentage: 73, charging: CommandLine.arguments.contains("--charging"),
+                powerSaving: CommandLine.arguments.contains("--saver")))
         }
     }
 }

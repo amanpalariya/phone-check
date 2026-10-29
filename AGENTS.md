@@ -12,7 +12,8 @@ A lightweight Android app and macOS companion. One phone paired to one Mac. The 
 - Include only essential pairing, permission explanations, connection status, and empty/error states.
 - Reconcile active notifications after reconnect; deduplicate updates. Expire stale commands and avoid replaying old alerts.
 - Support big text, inbox, messaging, bounded picture previews, progress, groups, media/call notification controls, ordinary PendingIntent actions and one text/choice RemoteInput. Custom RemoteViews use a text fallback. Unsupported attachment/multiple-input actions stay disabled. Calls here mean notification controls, not audio transport.
-- Exclude battery/status dashboards, clipboard, file transfer, notification history, accounts, and multi-device support.
+- Show phone battery level, charging state, and active Battery Saver in the Mac panel header, replacing the connection dot and header notification count; the menu-bar notification count remains. Keep device status independent of notification state and transport.
+- Exclude status dashboards, clipboard, file transfer, notification history, accounts, and multi-device support.
 - Keep code readable and modular: separate capture/assets, command validation/execution, transport, presentation, and deterministic fixtures without adding speculative frameworks.
 
 ## UI direction
@@ -31,7 +32,7 @@ Checked official documentation October 27, 2026; recheck stable SDK/tool version
 
 - Android: use `NotificationListenerService`, with user-enabled notification access. Wait for `onListenerConnected()` before reading active notifications or calling `cancelNotification(key)`. Respect non-dismissible notifications and system-redacted content; do not promise access to every notification.
 - macOS: use `UserNotifications` for system alerts; request authorization in context. Register a notification category and handle its explicit dismissal action. Evaluate `.customDismissAction` for user dismissals; never treat a banner timing out as phone dismissal.
-- Android group summaries are containers, not extra message rows or Mac alerts when children are present. Keep their original capabilities in a secondary-click context menu; no three-dot menu. Header and menu-bar counts include the actual notifications, excluding represented summaries; the header's dot supplies connection status without a separate connected-status row.
+- Android group summaries are containers, not extra message rows or Mac alerts when children are present. Keep their original capabilities in a secondary-click context menu; no three-dot menu. The menu-bar count includes actual notifications, excluding represented summaries. The panel header shows phone battery instead of a dot or duplicate notification count; connection state remains available in its accessible label and existing empty/settings states.
 - Keep authenticated, encrypted same-Wi-Fi transport for the current implementation and testing. The user requested Firebase preparation on October 28, 2026 and prefers it as the production default. Project-independent Firebase adapters are implemented; project authentication, cloud pairing, session provisioning/reconnect, cleanup, push wake delivery and configuration remain pending a Firebase project. See `firebase/README.md`. Keep notification logic independent of transport so its sync and confirmed-dismissal behavior can be reused.
 - If targeting Android 17/API 37+, local networking needs `ACCESS_LOCAL_NETWORK` runtime permission or an applicable system-mediated picker. Check macOS local-network privacy requirements too.
 - Pair explicitly before forwarding content; never log notification bodies or credentials. Keep only the active state needed for syncing.

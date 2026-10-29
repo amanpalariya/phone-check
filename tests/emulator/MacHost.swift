@@ -85,6 +85,9 @@ struct MacHost {
             let state: [String: Any] = [
                 "listening": model.listening, "paired": model.paired, "connected": model.connected,
                 "connections": connectionCount,
+                "batteryPercentage": model.battery?.percentage ?? -1,
+                "batteryCharging": model.battery?.charging ?? false,
+                "batteryPowerSaving": model.battery?.powerSaving ?? false,
                 "titles": titles, "count": fixture.count, "pending": model.commands.pendingKeys.count,
                 "blocked": fixture.filter { !$0.dismissible }.count,
                 "error": model.error ?? model.commands.error ?? "", "handled": handled,

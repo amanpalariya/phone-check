@@ -8,6 +8,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     @Published private(set) var status = "Not paired"
     @Published private(set) var notices: [Notice] = []
     var notificationCount: Int { NotificationSection.count(notices) }
+    @Published private(set) var battery: BatteryStatus?
     @Published private(set) var phoneName: String?
     var phoneIdentifier: String? { credentials?.peer }
     @Published private(set) var paired = false
@@ -61,7 +62,8 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
     }
     #if PHONECHECK_VISUAL_TEST
-    func showPreview(_ items: [Notice]) {
+    func showPreview(_ items: [Notice], battery: BatteryStatus? = nil) {
+        self.battery = battery
         notices = items; paired = true; connected = true; listening = true
         alertsAllowed = true; status = "Connected"
     }
@@ -217,6 +219,9 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             guard !state.synchronized, staged == nil, let items = message.items, items.count <= 1000,
                   items.allSatisfy(validNotice) else { active?.close(); return }
             completeSnapshot(items)
+        case "device_status":
+            guard let battery = message.battery, battery.isValid else { active?.close(); return }
+            self.battery = battery
         case "attention":
             updateAttention(message)
             if phoneAttention.inUse == true { center.removeAllPendingNotificationRequests() }
@@ -284,7 +289,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         alerts.register(notices)
     }
     private func clearActive() {
-        connected = false; state.reset(); phoneAttention = PhoneAttentionState()
+        connected = false; battery = nil; state.reset(); phoneAttention = PhoneAttentionState()
         notices = []; staged = nil; stagedBytes = 0
         commands.reset(); alerts.register([])
         syncDeadline?.invalidate(); syncDeadline = nil

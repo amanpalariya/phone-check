@@ -1,6 +1,6 @@
 # Phone Check
 
-Android notification mirroring, actions, replies, and dismissal, with a native macOS menu-bar companion. Both apps are in this repository. One phone, one Mac, same local network. No backend or accounts.
+Android notification mirroring, actions, replies, dismissal, and phone battery/charging/Battery Saver status, with a native macOS menu-bar companion. Both apps are in this repository. One phone, one Mac, same local network. No backend or accounts.
 
 Local Wi-Fi remains the configured transport and the integration-test path. Firebase is the intended production default; both apps now include project-independent HTTPS real-time adapters behind the same notification interfaces. Project authentication, cloud pairing, session provisioning/reconnect and setup UI remain to be connected when the project exists. See [Firebase setup and architecture](firebase/README.md).
 

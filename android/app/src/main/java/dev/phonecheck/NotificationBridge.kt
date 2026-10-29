@@ -40,6 +40,9 @@ class NotificationBridge : NotificationListenerService() {
             inSession { if (snapshotSent) send(attentionMessage()) }
         }
     }
+    private val battery: PhoneBattery by lazy { PhoneBattery(this) {
+        inSession { if (snapshotSent) send(deviceStatusMessage()) }
+    } }
     private var transport: NotificationTransport? = null
     private var requiresLocalNetwork = true
     private val callbacks = TransportCallbacks(::transportConnected, ::transportMessage, ::transportDisconnected)
@@ -76,6 +79,7 @@ class NotificationBridge : NotificationListenerService() {
     }
     override fun onCreate() {
         super.onCreate(); BridgeState.service = this
+        battery.start()
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
@@ -94,7 +98,7 @@ class NotificationBridge : NotificationListenerService() {
     }
     override fun onDestroy() {
         ready = false; BridgeState.listenerReady = false; BridgeState.service = null
-        unregisterReceiver(attentionReceiver)
+        unregisterReceiver(attentionReceiver); battery.close()
         stopLink(); transport?.close(); thread.quitSafely(); super.onDestroy()
     }
     private fun allowed() = !requiresLocalNetwork || Build.VERSION.SDK_INT < 37 ||
@@ -131,7 +135,7 @@ class NotificationBridge : NotificationListenerService() {
             val current = activeNotifications ?: error("Listener unavailable")
             current.forEach { sbn -> capture.capture(sbn)?.let { active[sbn.key] = it.json } }
             if (session != expected || !ready) return
-            transport?.sendBatch(listOf(attentionMessage()) + NotificationSnapshot.frames(active.values))
+            transport?.sendBatch(listOf(attentionMessage(), deviceStatusMessage()) + NotificationSnapshot.frames(active.values))
             snapshotSent = true
             main.post { if (session == expected) BridgeState.status = "Connected" }
         }.onFailure { transport?.disconnect() }
@@ -157,6 +161,8 @@ class NotificationBridge : NotificationListenerService() {
             commands.onRemoved(sbn.key)
         }
     }
+    private fun deviceStatusMessage() = JSONObject().put("type", "device_status")
+        .put("battery", battery.current.json())
     private fun attentionMessage() = JSONObject().put("type", "attention")
         .put("phoneInUse", attention.isInUse()).put("sentAt", System.currentTimeMillis())
     private fun send(message: JSONObject) = transport?.send(message)
