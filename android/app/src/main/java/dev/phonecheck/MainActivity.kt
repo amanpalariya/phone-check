@@ -58,6 +58,8 @@ class MainActivity : ComponentActivity() {
             PhoneCheckTheme {
                 PhoneCheckScreen(
                     signedIn = signedIn, signingIn = signingIn,
+                    accountName = CloudAccount.auth.currentUser?.displayName,
+                    accountEmail = CloudAccount.auth.currentUser?.email,
                     onSignIn = {
                         lifecycleScope.launch {
                             signingIn = true; authError = null
@@ -101,7 +103,8 @@ class MainActivity : ComponentActivity() {
                         }
                     },
                     onReconnect = {
-                        android.service.notification.NotificationListenerService.requestRebind(
+                        if (BridgeState.listenerReady) BridgeState.service?.restart()
+                        else android.service.notification.NotificationListenerService.requestRebind(
                             ComponentName(this, NotificationBridge::class.java))
                     },
                     onTestbed = { DevelopmentFeatures.openTestbed(this) },

@@ -139,10 +139,16 @@ References checked October 29, 2026:
 [database rules](https://firebase.google.com/docs/database/security/core-syntax),
 [disconnect cleanup](https://firebase.google.com/docs/database/ios/offline-capabilities#how_ondisconnect_works).
 
-Current verification: both debug apps build; 16 Android unit tests and Android lint pass;
-11 Mac core checks, 8 Firebase/device-state check groups, and the Mac testbed/pane checks
+Current verification: both debug apps build; 19 Android unit tests and Android lint pass;
+11 Mac core checks, 9 Firebase/device-state check groups, and the Mac settings/testbed/pane checks
 pass; 5 database emulator tests pass. A live unauthenticated database read returned 401.
 Both apps were installed on the user's physical Android phone and Mac, and the user reported
 that the integration works on October 29, 2026. This is user-reported device verification;
 the full post/update/action/reply/dismissal/reconnect/revocation matrix above was not separately
 exercised by the agent during this session.
+
+Connection follow-up: Android invalidates pending retries when it accepts a session and
+ignores errors from superseded requests. Mac mailbox shutdown cancels IO without invalidating
+the URLSession while an authentication-token provider is suspended. Regression checks cover
+both races. Updated apps were installed without clearing pairing; the agent observed live
+notifications, battery status and a sustained Connected state on the physical Mac/phone.

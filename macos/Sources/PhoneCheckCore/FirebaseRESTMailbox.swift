@@ -35,12 +35,15 @@ public final class FirebaseRESTMailbox: FirebaseMailbox {
         self.idToken = idToken
     }
     public func observe(_ path: String, changed: @escaping (Result<String?, Error>) -> Void) -> () -> Void {
+        guard !closed else { return {} }
         let id = UUID()
         tasks[id] = Task { @MainActor [weak self] in
             guard let self, !self.closed else { return }
             defer { self.tasks.removeValue(forKey: id) }
             do {
                 let request = try await self.request(path, method: "GET")
+                try Task.checkCancellation()
+                guard !self.closed else { return }
                 let (bytes, response) = try await self.network.bytes(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                       http.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("text/event-stream") == true else {
@@ -59,6 +62,7 @@ public final class FirebaseRESTMailbox: FirebaseMailbox {
         return { [weak self] in self?.tasks.removeValue(forKey: id)?.cancel() }
     }
     public func write(_ path: String, value: String, completion: @escaping (Error?) -> Void) {
+        guard !closed else { return }
         let id = UUID()
         tasks[id] = Task { @MainActor [weak self] in
             guard let self, !self.closed else { return }
@@ -67,6 +71,8 @@ public final class FirebaseRESTMailbox: FirebaseMailbox {
                 guard value.utf8.count <= Wire.maxFrame * 2 else { throw FirebaseRESTError.response }
                 var request = try await self.request(path, method: "PUT")
                 request.httpBody = try JSONEncoder().encode(value)
+                try Task.checkCancellation()
+                guard !self.closed else { return }
                 // Avoid echoing notification ciphertext in the HTTP response.
                 let (_, response) = try await self.network.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 204 else { throw FirebaseRESTError.response }
@@ -81,7 +87,8 @@ public final class FirebaseRESTMailbox: FirebaseMailbox {
             throw FirebaseRESTError.configuration
         }
         let token = try await idToken()
-        guard !token.isEmpty else { throw FirebaseRESTError.configuration }
+        try Task.checkCancellation()
+        guard !closed, !token.isEmpty else { throw FirebaseRESTError.configuration }
         var components = URLComponents(url: baseURL.appendingPathComponent(path + ".json"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "auth", value: token)]
         if method == "PUT" { components.queryItems?.append(URLQueryItem(name: "print", value: "silent")) }
@@ -92,11 +99,19 @@ public final class FirebaseRESTMailbox: FirebaseMailbox {
         return request
     }
     public func close() {
-        closed = true; network.invalidateAndCancel()
+        guard !closed else { return }
+        closed = true
         let running = Array(tasks.values); tasks.removeAll()
         running.forEach { $0.cancel() }
+        // A token provider may still be suspended. Invalidation here would make a resumed
+        // URLSession task creation raise an Objective-C exception instead of a Swift error.
+        // Keep the session valid until those tasks release this mailbox, cancelling IO now.
+        network.getAllTasks { $0.forEach { $0.cancel() } }
     }
-    deinit { tasks.values.forEach { $0.cancel() } }
+    deinit {
+        tasks.values.forEach { $0.cancel() }
+        network.invalidateAndCancel()
+    }
 }
 
 public final class FirebaseRedirectPolicy: NSObject, URLSessionTaskDelegate {

@@ -15,6 +15,10 @@ struct MaterialReview {
             runMotionChecks()
             return
         }
+        if CommandLine.arguments.contains("--settings-checks") {
+            runSettingsChecks()
+            return
+        }
         if CommandLine.arguments.contains("--testbed-checks") {
             runTestbedChecks()
             return
@@ -52,8 +56,14 @@ struct MaterialReview {
             let controller = CompanionSettingsController(model: model, showTestbed: {
                 testbedWindow.makeKeyAndOrderFront(nil)
             })
+            if let flag = CommandLine.arguments.firstIndex(of: "--settings-tab"), CommandLine.arguments.count > flag + 1,
+               let section = SettingsSection(rawValue: CommandLine.arguments[flag + 1]) {
+                controller.select(section)
+            }
             if CommandLine.arguments.contains("--dark") {
                 controller.window.appearance = NSAppearance(named: .darkAqua)
+            } else if CommandLine.arguments.contains("--light") {
+                controller.window.appearance = NSAppearance(named: .aqua)
             }
             controller.show()
             if let flag = CommandLine.arguments.firstIndex(of: "--render"), CommandLine.arguments.count > flag + 1 {

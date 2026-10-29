@@ -47,9 +47,16 @@ internal class CloudTransport(
     private var requestID = ""
     private var sessionID: String? = null
     private var closed = false
-    private var retry = 1000L
     private val usedSessions = mutableSetOf<String>()
-    private val requestAgain = Runnable { requestSession() }
+    private val reconnect = CloudReconnect(
+        schedule = { delay, action ->
+            val task = Runnable { action() }
+            main.postDelayed(task, delay)
+            val cancel: () -> Unit = { main.removeCallbacks(task) }
+            cancel
+        },
+        retry = { if (!closed && active == null) requestSession() }
+    )
     override fun start() {
         if (closed || uid == null || uid != pairing.ownerUID || pairing.pairID == null) {
             BridgeState.status = "Sign in to pair again"; return
@@ -73,8 +80,9 @@ internal class CloudTransport(
                 runCatching {
                     require(MessageDigest.isEqual(Wire.unbase64(proof), Wire.derive(pairing.secret, "cloud-offer", material)))
                     val session = FirebaseSession(id, pairing.secret, expiry, System.currentTimeMillis())
+                    reconnect.accepted()
                     active?.stop(); active = null; callbacks.onDisconnected()
-                    sessionID = id; usedSessions += id; retry = 1000
+                    sessionID = id; usedSessions += id
                     val mailboxRef = root!!.child("mailboxes").child(id)
                     mailboxRef.onDisconnect().removeValue()
                     active = FirebaseTransport(main, CloudMailbox(mailboxRef), session,
@@ -85,12 +93,11 @@ internal class CloudTransport(
                         onDisconnected = {
                             mailboxRef.removeValue()
                             active = null; callbacks.onDisconnected()
-                            main.removeCallbacks(requestAgain); main.postDelayed(requestAgain, retry)
-                            retry = (retry * 2).coerceAtMost(15_000)
+                            reconnect.failed()
                         }).also { it.start() }
                 }.onFailure {
                     active?.stop(); active = null; callbacks.onDisconnected()
-                    main.removeCallbacks(requestAgain); main.postDelayed(requestAgain, 2000)
+                    reconnect.failed()
                 }
             }
             override fun onCancelled(error: DatabaseError) {
@@ -104,11 +111,11 @@ internal class CloudTransport(
         if (closed || root == null) return
         requestID = UUID.randomUUID().toString(); usedSessions.clear()
         val proof = Wire.b64(Wire.derive(pairing.secret, "cloud-request", "$requestID|${pairing.peer}".toByteArray()))
+        val attempt = requestID
         root.child("control/request").setValue(mapOf("id" to requestID, "peer" to pairing.peer, "proof" to proof)) { error, _ ->
-            if (!closed && error != null) {
+            if (!closed && error != null && requestID == attempt && active == null) {
                 BridgeState.status = "Connecting…"
-                main.removeCallbacks(requestAgain); main.postDelayed(requestAgain, retry)
-                retry = (retry * 2).coerceAtMost(15_000)
+                reconnect.failed()
             }
         }
     }
@@ -117,7 +124,7 @@ internal class CloudTransport(
     override fun disconnect() { active?.disconnect() }
     override fun stop() {
         if (closed) return
-        closed = true; main.removeCallbacks(requestAgain)
+        closed = true; reconnect.stop()
         listener?.let { root?.child("control")?.removeEventListener(it) }; listener = null
         active?.stop(); active = null
     }

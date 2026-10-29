@@ -4,7 +4,12 @@ import Security
 /// Classic login Keychain for our own item: no access-group or Apple-issued signing dependency.
 /// Ad hoc rebuilds can still trigger macOS's normal Keychain authorization prompt.
 enum CloudTokenStore {
-    struct Record: Codable { let uid: String; let refreshToken: String }
+    struct Record: Codable {
+        let uid: String
+        let refreshToken: String
+        var displayName: String? = nil
+        var email: String? = nil
+    }
     private static var query: [String: Any] {
         #if DEBUG
         let suffix = ".development"

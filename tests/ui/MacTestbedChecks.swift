@@ -582,3 +582,18 @@ func runSearchMotionChecks() {
     window.orderOut(nil)
     print("Rendered outgoing cards fade (ink fraction \(remainingInk)); native search and clearing slide surviving cards")
 }
+
+// Profile fields are optional so adding the account UI cannot invalidate an existing login.
+func runSettingsChecks() {
+    let data = Data(#"{"uid":"fixture-user","refreshToken":"fixture-refresh"}"#.utf8)
+    let decoder = JSONDecoder()
+    let legacy = try! decoder.decode(CloudTokenStore.Record.self, from: data)
+    precondition(legacy.uid == "fixture-user" && legacy.refreshToken == "fixture-refresh")
+    precondition(legacy.displayName == nil && legacy.email == nil)
+    var profile = legacy
+    profile.displayName = "Alex Parker"; profile.email = "alex@example.com"
+    let restored = try! decoder.decode(CloudTokenStore.Record.self, from: JSONEncoder().encode(profile))
+    precondition(restored.uid == legacy.uid && restored.refreshToken == legacy.refreshToken)
+    precondition(restored.displayName == "Alex Parker" && restored.email == "alex@example.com")
+    print("Settings profile storage preserves existing credentials and optional identity fields")
+}

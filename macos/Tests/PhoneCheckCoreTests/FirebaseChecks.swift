@@ -17,7 +17,31 @@ enum FirebaseChecks {
         try configurationAndAttention()
         try streamFraming()
         try controlStream()
-        print("8 Firebase/device-state check groups passed")
+        try closingDuringTokenRefresh()
+        print("9 Firebase/device-state check groups passed")
+    }
+    static func closingDuringTokenRefresh() throws {
+        func wait(until condition: () -> Bool) throws {
+            let deadline = Date().addingTimeInterval(3)
+            while !condition() && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.01)) }
+            try expect(condition())
+        }
+        for stream in [false, true] {
+            let gate = SuspendedTokenFixture()
+            var callbacks = 0
+            var mailbox: FirebaseRESTMailbox? = try FirebaseRESTMailbox(
+                databaseURL: URL(string: "https://demo.firebaseio.com")!, pairID: "pair", sessionID: id,
+                idToken: { await gate.wait() })
+            weak var released = mailbox
+            if stream { _ = mailbox!.observe("phoneToMac") { _ in callbacks += 1 } }
+            else { mailbox!.write("macToPhone", value: "fixture") { _ in callbacks += 1 } }
+            try wait { gate.pending == 1 }
+            // Model a timeout, reconnect or session rotation while auth refresh is suspended.
+            mailbox!.close(); mailbox!.close(); mailbox = nil
+            gate.resume()
+            try wait { released == nil }
+            try expect(callbacks == 0)
+        }
     }
     static func controlStream() throws {
         var parser = FirebaseControlStream()
@@ -216,5 +240,21 @@ private final class MailboxFixture {
             closed = true
             subscriptions.forEach { bus.observers.removeValue(forKey: $0) }; subscriptions = []
         }
+    }
+}
+
+// A token provider that deliberately ignores cancellation until the test releases it.
+private final class SuspendedTokenFixture {
+    private let lock = NSLock()
+    private var continuations: [CheckedContinuation<String, Never>] = []
+    var pending: Int { lock.withLock { continuations.count } }
+    func wait() async -> String {
+        await withCheckedContinuation { continuation in lock.withLock { continuations.append(continuation) } }
+    }
+    func resume() {
+        let pending = lock.withLock { () -> [CheckedContinuation<String, Never>] in
+            let pending = continuations; continuations.removeAll(); return pending
+        }
+        pending.forEach { $0.resume(returning: "fixture-token") }
     }
 }

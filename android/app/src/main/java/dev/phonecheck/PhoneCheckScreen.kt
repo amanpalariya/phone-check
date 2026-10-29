@@ -1,7 +1,6 @@
 package dev.phonecheck
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -38,6 +37,8 @@ internal fun PhoneCheckTheme(content: @Composable () -> Unit) {
 internal fun PhoneCheckScreen(
     signedIn: Boolean = true,
     signingIn: Boolean = false,
+    accountName: String? = null,
+    accountEmail: String? = null,
     onSignIn: () -> Unit = {},
     onSignOut: () -> Unit = {},
     paired: Boolean,
@@ -58,9 +59,9 @@ internal fun PhoneCheckScreen(
     onTestbed: () -> Unit,
     onUnpair: () -> Unit
 ) {
-    var settingsPage by rememberSaveable { mutableStateOf<String?>(null) }
+    var settingsPage by rememberSaveable { mutableStateOf<PhoneSettingsPage?>(null) }
     BackHandler(enabled = settingsPage != null) {
-        settingsPage = if (settingsPage == "Advanced") "Settings" else null
+        settingsPage = if (settingsPage == PhoneSettingsPage.MAIN) null else PhoneSettingsPage.MAIN
     }
     var confirmUnpair by remember { mutableStateOf(false) }
     var manualPairing by rememberSaveable { mutableStateOf(false) }
@@ -92,13 +93,13 @@ internal fun PhoneCheckScreen(
     Surface(Modifier.fillMaxSize()) {
         if (settingsPage != null) {
             PhoneSettingsScreen(
-                advanced = settingsPage == "Advanced",
-                paired = paired,
-                signedIn = signedIn, onSignOut = onSignOut,
-                onBack = { settingsPage = if (settingsPage == "Advanced") "Settings" else null },
-                onAdvanced = { settingsPage = "Advanced" },
-                onTestbed = onTestbed,
-                onUnpair = { confirmUnpair = true }
+                page = settingsPage!!, signedIn = signedIn, signingIn = signingIn,
+                accountName = accountName, accountEmail = accountEmail,
+                paired = paired, access = access, listenerReady = listenerReady, status = status, error = error,
+                onBack = { settingsPage = if (settingsPage == PhoneSettingsPage.MAIN) null else PhoneSettingsPage.MAIN },
+                onNavigate = { settingsPage = it }, onSetup = { settingsPage = null },
+                onSignIn = onSignIn, onSignOut = onSignOut, onNotificationAccess = onNotificationAccess,
+                onReconnect = onReconnect, onTestbed = onTestbed, onUnpair = { confirmUnpair = true }
             )
         } else Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
             Column(
@@ -110,8 +111,8 @@ internal fun PhoneCheckScreen(
                         tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(23.dp))
                     Text("Phone Check", style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(start = 9.dp).weight(1f))
-                    IconButton(onClick = { settingsPage = "Settings" }) {
-                        Icon(painterResource(R.drawable.ic_more), contentDescription = "Settings",
+                    IconButton(onClick = { settingsPage = PhoneSettingsPage.MAIN }) {
+                        Icon(painterResource(R.drawable.ic_settings), contentDescription = "Settings",
                             modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -166,48 +167,6 @@ internal fun PhoneCheckScreen(
             title = { Text("Unpair Mac?") },
             confirmButton = { TextButton(onClick = { onUnpair(); confirmUnpair = false }) { Text("Unpair") } },
             dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Cancel") } })
-    }
-}
-
-@Composable
-private fun PhoneSettingsScreen(
-    advanced: Boolean,
-    paired: Boolean,
-    signedIn: Boolean,
-    onSignOut: () -> Unit,
-    onBack: () -> Unit,
-    onAdvanced: () -> Unit,
-    onTestbed: () -> Unit,
-    onUnpair: () -> Unit
-) {
-    Column(
-        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)
-            .verticalScroll(rememberScrollState()).padding(horizontal = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Column(Modifier.widthIn(max = 440.dp).fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onBack) { Text("Back") }
-                Text(if (advanced) "Advanced" else "Settings", style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(start = 12.dp))
-            }
-            if (advanced && DevelopmentFeatures.enabled) {
-                ListItem(headlineContent = { Text("Notification testbed") },
-                    modifier = Modifier.clickable(onClick = onTestbed))
-            } else {
-                if (DevelopmentFeatures.enabled) {
-                    ListItem(headlineContent = { Text("Advanced") },
-                        modifier = Modifier.clickable(onClick = onAdvanced))
-                }
-                if (signedIn) {
-                    ListItem(headlineContent = { Text("Sign out") }, modifier = Modifier.clickable(onClick = onSignOut))
-                }
-                if (paired) {
-                    ListItem(headlineContent = { Text("Unpair Mac") },
-                        modifier = Modifier.clickable(onClick = onUnpair))
-                }
-            }
-        }
     }
 }
 

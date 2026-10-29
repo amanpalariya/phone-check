@@ -373,3 +373,20 @@ Additional device checks:
   Mac appearance of each real notification remains subject to visual confirmation.
   Apps without launcher entries and restricted profiles may still have metadata restricted
   by Android.
+
+## Native settings and Firebase reconnect — October 29, 2026
+
+- Mac settings now uses a native preferences toolbar for General, Account, Devices and
+  development-only Advanced. Android uses Material 3 settings pages with the same essential
+  functions. Google identity is cached with the existing login record; older records decode.
+- Both debug apps built and were installed without clearing data. Android account/sign-out
+  confirmation was visually checked (cancelled); Mac account and connected-device settings
+  were visually checked. Mac settings content was reviewed in light and dark appearances.
+- Fixed an Android retry firing after a valid session offer, and a Mac crash when a suspended
+  token request resumed after URLSession invalidation. Added three retry regressions and a
+  mailbox close-during-token-refresh regression for both reads and writes.
+- 19 Android unit tests and lint passed; 11 Mac core checks, 9 Firebase/device-state groups,
+  and settings, testbed and pane checks passed. The live Mac received phone notifications and
+  battery status and stayed Connected during follow-up; Android's current process logged no
+  permission-denied errors or fatal exceptions. Long-duration/sleep/token-expiry testing and
+  the complete notification action matrix remain separate device checks.

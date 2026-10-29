@@ -8,6 +8,10 @@ final class CloudAccount: ObservableObject {
     static let shared = CloudAccount()
     @Published private(set) var signedIn = false
     @Published private(set) var busy = false
+    @Published private(set) var displayName: String?
+    @Published private(set) var email: String?
+    private var profileLoaded = false
+    private var profileLoading = false
     @Published private(set) var error: String?
     private(set) var configured = false
     private(set) var projectID = ""
@@ -29,7 +33,8 @@ final class CloudAccount: ObservableObject {
     }
     private init() {
         #if PHONECHECK_VISUAL_TEST
-        signedIn = true
+        signedIn = true; displayName = "Alex Parker"; email = "alex@example.com"
+        profileLoaded = true
         return
         #else
         guard let path = Bundle.main.url(forResource: "GoogleService-Info", withExtension: "plist"),
@@ -49,7 +54,10 @@ final class CloudAccount: ObservableObject {
               let secret = installed["client_secret"] as? String else { error = "Google login configuration unavailable"; return }
         projectID = project; databaseURL = url; apiKey = key; clientID = client; clientSecret = secret
         configured = true
-        do { record = try CloudTokenStore.load(); signedIn = record != nil }
+        do {
+            record = try CloudTokenStore.load(); signedIn = record != nil
+            displayName = record?.displayName; email = record?.email
+        }
         catch { self.error = "Login storage unavailable" }
         #endif
     }
@@ -69,9 +77,12 @@ final class CloudAccount: ObservableObject {
                                "requestUri": "http://localhost", "returnSecureToken": true])
                     guard let uid = response["localId"] as? String, let refresh = response["refreshToken"] as? String,
                           let token = response["idToken"] as? String else { throw FirebaseRESTError.response }
-                    let record = CloudTokenStore.Record(uid: uid, refreshToken: refresh)
+                    let record = CloudTokenStore.Record(uid: uid, refreshToken: refresh,
+                        displayName: response["displayName"] as? String, email: response["email"] as? String)
                     try CloudTokenStore.save(record)
-                    self.record = record; self.token = token; self.expiry = Date().addingTimeInterval(3500)
+                    self.record = record; self.displayName = record.displayName; self.email = record.email
+                    self.profileLoaded = false
+                    self.token = token; self.expiry = Date().addingTimeInterval(3500)
                     self.signedIn = true; self.error = nil; self.onChange?()
                 } catch { self.error = "Could not sign in. Try again." }
             }
@@ -90,6 +101,7 @@ final class CloudAccount: ObservableObject {
             let (data, response) = try await network.data(for: request)
             if let status = (response as? HTTPURLResponse)?.statusCode, status == 400 || status == 401 {
                 self.record = nil; self.token = nil; self.signedIn = false
+                self.displayName = nil; self.email = nil; self.profileLoaded = false
                 try? CloudTokenStore.clear(); self.onChange?()
                 throw FirebaseRESTError.response
             }
@@ -98,7 +110,8 @@ final class CloudAccount: ObservableObject {
                   json["user_id"] as? String == record.uid,
                   let token = json["id_token"] as? String, let nextRefresh = json["refresh_token"] as? String,
                   self.record?.uid == record.uid, signedIn else { throw FirebaseRESTError.response }
-            let next = CloudTokenStore.Record(uid: record.uid, refreshToken: nextRefresh)
+            let next = CloudTokenStore.Record(uid: record.uid, refreshToken: nextRefresh,
+                displayName: record.displayName, email: record.email)
             try CloudTokenStore.save(next); self.record = next
             self.token = token; self.expiry = Date().addingTimeInterval(3500)
             return token
@@ -107,9 +120,31 @@ final class CloudAccount: ObservableObject {
         defer { refresh = nil }
         return try await task.value
     }
+    /// Once per signed-in process, including sessions saved before profile fields were added.
+    @MainActor func refreshProfile() async {
+        guard signedIn, !profileLoaded, !profileLoading, let owner = uid else { return }
+        profileLoading = true
+        defer { profileLoading = false }
+        do {
+            let token = try await idToken()
+            let response = try await postJSON("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=\(apiKey)",
+                                              body: ["idToken": token])
+            guard let users = response["users"] as? [[String: Any]], let user = users.first,
+                  user["localId"] as? String == owner, let current = record, current.uid == owner,
+                  uid == owner else { return }
+            var updated = current
+            updated.displayName = user["displayName"] as? String
+            updated.email = user["email"] as? String
+            try CloudTokenStore.save(updated)
+            record = updated; displayName = updated.displayName; email = updated.email; profileLoaded = true
+        } catch {
+            // Cached identity remains useful offline; opening settings must not interrupt sync.
+        }
+    }
     func signOut() {
         do { try CloudTokenStore.clear() } catch { self.error = "Could not sign out"; return }
-        refresh?.cancel(); refresh = nil; record = nil; token = nil; signedIn = false; onChange?()
+        refresh?.cancel(); refresh = nil; record = nil; token = nil; signedIn = false
+        displayName = nil; email = nil; profileLoaded = false; onChange?()
     }
     private func postJSON(_ endpoint: String, body: [String: Any]) async throws -> [String: Any] {
         var request = URLRequest(url: URL(string: endpoint)!); request.httpMethod = "POST"; request.timeoutInterval = 15

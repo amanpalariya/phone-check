@@ -96,10 +96,10 @@ swiftc -parse-as-library macos/Sources/PhoneCheck/PairingQRCode.swift tests/ui/P
 
 ## Pair
 
-1. Click the Mac menu-bar icon and choose **Pair phone**. Scan the QR code right in the panel; its countdown shows when the code expires. Settings shows the paired phone, connection status, and **Unpair…**; development builds also have an Advanced tab with the notification testbed.
-2. Tap **Scan QR code** in the Android app and scan the Mac’s QR code within five minutes. Or choose **Enter code instead** on Android and **Copy code** on Mac. Both devices must be on the same private IPv4 LAN; choose the Mac's Wi-Fi address if several addresses appear. Guest Wi-Fi client isolation can prevent connections.
-3. Grant Android notification access and, on Android 17+, local network access. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
-4. Enable Mac notifications in the companion. Allow local network access if macOS asks.
+1. Sign in with the same Google account on both devices. Click the Mac menu-bar icon and choose **Pair phone**; its QR countdown shows when the code expires.
+2. Tap **Scan QR code** in the Android app and scan the Mac’s QR code within five minutes. Or choose **Enter code instead** on Android and **Copy code** on Mac. Both devices need internet access and can use different networks.
+3. Grant Android notification access. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
+4. Enable Mac notifications in **Settings → General**. Settings on both apps includes the Google account and device connection, with explicit sign-out/unpair confirmations. Development builds also include **Advanced** with the notification testbed.
 
 Scanning uses [Google code scanner](https://developers.google.com/ml-kit/vision/barcode-scanning/code-scanner), which processes images on-device without granting Phone Check camera access. It requires Google Play services and may need an initial scanner download; manual entry works without it. The QR code contains the same temporary pairing secret as the copied code and expires or is canceled with it.
 
