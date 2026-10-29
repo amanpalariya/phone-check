@@ -315,3 +315,36 @@ Additional device checks:
   tangents. Release build and diff whitespace check passed; live visual review pending.
 - Raised the pane content by 4 points (top inset 6 → 2) at the user's request.
   Release/review builds and native pane checks passed with updated backdrop bounds.
+
+## QR pairing — October 29, 2026
+
+- Committed the preceding Android settings changes as `e61e4b0` before starting QR pairing.
+- Mac now displays a locally generated QR for the current pairing code. Android offers
+  Google Play services QR scanning, with cancellation, unavailable-scanner feedback, and
+  manual entry retained. Both paths use the existing private-address/key validation and
+  Keystore storage; Mac cancellation and the five-minute expiry still apply.
+- Android debug APK build, unit tests, and lint passed. Updated the scanner's transitive
+  Fragment dependency to 1.9.1 to preserve Activity Result compatibility.
+- Mac release app build and existing core checks passed. Vision decoded the actual SwiftUI
+  QR surface for three private addresses in both light and dark appearances, preserving
+  the exact pairing payload. Reproduce with the QR check command in README.md.
+- Physical camera scanning, first-use scanner download, unavailable Play services,
+  rotation/cancellation, expired-code rejection, and end-to-end pairing remain to be
+  checked on devices. No installed apps or existing device pairing were changed.
+
+### Device follow-up and app identity — October 29, 2026
+
+- Installed and launched the QR builds on the Mac and connected Samsung phone without
+  clearing app data. The user reports that QR pairing worked flawlessly.
+- Added launcher-intent package visibility so Android can resolve source app labels and
+  icons rather than falling back to package names. Failed icon lookups are no longer
+  cached for the rest of a connection.
+- Android APK build, unit tests, lint, and instrumentation APK build passed. Added a device
+  regression check using an independent shell list of launcher apps, checking production
+  capture labels and bounded, decodable icons without reading real notifications.
+- Installed the identity fix on the reconnected Samsung SM-S911B without clearing app data.
+  `AppIdentityTest` passed on the physical phone: production capture resolved the labels
+  and decodable icons for its launcher apps. Relaunched Phone Check after the check.
+  Mac appearance of each real notification remains subject to visual confirmation.
+  Apps without launcher entries and restricted profiles may still have metadata restricted
+  by Android.

@@ -25,7 +25,7 @@ final class CompanionSettingsController {
         window.toolbarStyle = .preference
         window.toolbar?.displayMode = .iconAndLabel
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 540, height: 400))
+        window.setContentSize(NSSize(width: 540, height: 520))
         window.setFrameAutosaveName("PhoneCheckSettings")
         window.center()
     }
@@ -149,7 +149,7 @@ struct PhoneSettingsView: View {
     private var pairing: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("Enter this code on your phone.").font(.headline)
+                Text("Scan with Phone Check on Android.").font(.headline)
                 Spacer()
                 Text("Expires in 5 minutes").font(.caption).foregroundStyle(.secondary)
             }
@@ -158,17 +158,21 @@ struct PhoneSettingsView: View {
                     ForEach(model.addresses, id: \.self) { Text($0).tag($0) }
                 }
             }
-            Text(model.code).font(.system(.callout, design: .monospaced))
-                .textSelection(.enabled).lineLimit(nil)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            PairingQRCodeView(code: model.code)
+                .frame(maxWidth: .infinity)
+            DisclosureGroup("Enter code instead") {
+                Text(model.code).font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled).lineLimit(nil)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14).background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            }
             HStack {
                 Button("Cancel", action: model.cancelPairing)
                 Spacer()
                 Button("Copy code") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(model.code, forType: .string)
-                }.buttonStyle(.borderedProminent)
+                }
             }
         }
     }

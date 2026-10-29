@@ -28,18 +28,34 @@ class MainActivity : ComponentActivity() {
         setContent {
             var code by remember { mutableStateOf("") }
             var error by remember { mutableStateOf<String?>(null) }
+            var scanning by remember { mutableStateOf(false) }
+            val pair: (String) -> Unit = { value ->
+                runCatching { Pairing.parse(value) }
+                    .onSuccess { pairing ->
+                        runCatching { PairingStore(this).save(pairing) }
+                            .onSuccess {
+                                code = ""; error = null
+                                BridgeState.paired = true; BridgeState.status = "Allow notification access"
+                                BridgeState.service?.restart()
+                            }.onFailure { error = "Could not save pairing. Try again." }
+                    }.onFailure { error = "Invalid pairing code. Use the code shown on your Mac." }
+            }
             PhoneCheckTheme {
                 PhoneCheckScreen(
                     paired = BridgeState.paired, access = access, network = network,
                     networkBlocked = networkBlocked, listenerReady = BridgeState.listenerReady,
-                    status = BridgeState.status, code = code, error = error,
+                    status = BridgeState.status, code = code, error = error, scanning = scanning,
                     onCodeChange = { code = it; error = null },
-                    onPair = {
-                        runCatching { PairingStore(this).save(Pairing.parse(code)) }
-                            .onSuccess {
-                                code = ""; BridgeState.paired = true; BridgeState.status = "Allow notification access"
-                                BridgeState.service?.restart()
-                            }.onFailure { error = "Invalid pairing code" }
+                    onPair = { pair(code) },
+                    onScan = {
+                        scanning = true; error = null
+                        scanPairingCode(this) { value, failure ->
+                            scanning = false
+                            if (!BridgeState.paired) {
+                                error = failure
+                                if (value != null) pair(value)
+                            }
+                        }
                     },
                     onNotificationAccess = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
                     onNetworkAccess = {

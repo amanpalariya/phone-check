@@ -68,12 +68,21 @@ Core checks run without XCTest or a full Xcode install:
 swift run --package-path macos PhoneCheckChecks
 ```
 
+Check that the Mac’s rendered pairing QR decodes correctly in both appearances:
+
+```sh
+swiftc -parse-as-library macos/Sources/PhoneCheck/PairingQRCode.swift tests/ui/PairingQRCodeChecks.swift -o /tmp/phonecheck-qr-checks
+/tmp/phonecheck-qr-checks
+```
+
 ## Pair
 
 1. Open **Settings…** from the Mac companion’s gear menu (or press **⌘,**) and choose **Pair phone** in the Phone tab. Settings shows the paired phone, connection status, and **Unpair…**; the Advanced tab contains the notification testbed.
-2. Enter its pairing code in the Android app within five minutes. Both devices must be on the same private IPv4 LAN; choose the Mac's Wi-Fi address if several addresses appear. Guest Wi-Fi client isolation can prevent connections.
+2. Tap **Scan QR code** in the Android app and scan the Mac’s QR code within five minutes. Or choose **Enter code instead** on Android and **Copy code** on Mac. Both devices must be on the same private IPv4 LAN; choose the Mac's Wi-Fi address if several addresses appear. Guest Wi-Fi client isolation can prevent connections.
 3. Grant Android notification access and, on Android 17+, local network access. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
 4. Enable Mac notifications in the companion. Allow local network access if macOS asks.
+
+Scanning uses [Google code scanner](https://developers.google.com/ml-kit/vision/barcode-scanning/code-scanner), which processes images on-device without granting Phone Check camera access. It requires Google Play services and may need an initial scanner download; manual entry works without it. The QR code contains the same temporary pairing secret as the copied code and expires or is canceled with it.
 
 Existing phone notifications appear silently in the companion on each connection. Only live, changed notifications produce system alerts. While the phone screen is on and unlocked, notifications still sync but Mac banners are suppressed; locking the phone does not replay them. **Dismiss on phone** waits for phone confirmation. Clearing or timing out a Mac banner never dismisses the phone notification.
 

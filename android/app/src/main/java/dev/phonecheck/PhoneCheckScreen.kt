@@ -44,8 +44,10 @@ internal fun PhoneCheckScreen(
     status: String,
     code: String,
     error: String?,
+    scanning: Boolean,
     onCodeChange: (String) -> Unit,
     onPair: () -> Unit,
+    onScan: () -> Unit,
     onNotificationAccess: () -> Unit,
     onNetworkAccess: () -> Unit,
     onReconnect: () -> Unit,
@@ -57,6 +59,7 @@ internal fun PhoneCheckScreen(
         settingsPage = if (settingsPage == "Advanced") "Settings" else null
     }
     var confirmUnpair by remember { mutableStateOf(false) }
+    var manualPairing by rememberSaveable { mutableStateOf(false) }
     val connected = paired && access && network && status == "Connected"
     val symbol = when {
         !paired -> R.drawable.ic_laptop
@@ -73,7 +76,7 @@ internal fun PhoneCheckScreen(
         else -> "Connecting"
     }
     val detail = when {
-        !paired -> "Copy the code from Phone Check on your Mac."
+        !paired -> "Scan the QR code in Phone Check on your Mac. Keep both devices on the same Wi-Fi."
         !access -> "Mirror notifications and use their actions on your Mac."
         !network -> "Allow access to your Mac on the local network."
         connected -> "Notifications appear on your Mac."
@@ -120,13 +123,22 @@ internal fun PhoneCheckScreen(
                 }
 
                 if (!paired) {
-                    TextField(value = code, onValueChange = onCodeChange,
-                        label = { Text("Mac pairing code") }, minLines = 2, maxLines = 4,
-                        textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
-                        modifier = Modifier.fillMaxWidth(), isError = error != null,
-                        shape = MaterialTheme.shapes.medium)
-                    Spacer(Modifier.height(16.dp))
-                    PrimaryButton("Pair Mac", enabled = code.isNotBlank(), onClick = onPair)
+                    if (!manualPairing) {
+                        PrimaryButton(if (scanning) "Opening scanner…" else "Scan QR code",
+                            enabled = !scanning, onClick = onScan)
+                        TextButton(onClick = { manualPairing = true }, enabled = !scanning,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Enter code instead") }
+                    } else {
+                        TextField(value = code, onValueChange = onCodeChange,
+                            label = { Text("Mac pairing code") }, minLines = 2, maxLines = 4,
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+                            modifier = Modifier.fillMaxWidth(), isError = error != null,
+                            shape = MaterialTheme.shapes.medium)
+                        Spacer(Modifier.height(16.dp))
+                        PrimaryButton("Pair Mac", enabled = code.isNotBlank(), onClick = onPair)
+                        TextButton(onClick = { manualPairing = false },
+                            modifier = Modifier.align(Alignment.CenterHorizontally)) { Text("Scan QR code instead") }
+                    }
                 } else if (!access) {
                     PrimaryButton("Allow notification access", onClick = onNotificationAccess)
                 } else if (!network) {

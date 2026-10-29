@@ -14,11 +14,11 @@ import java.io.ByteArrayOutputStream
 
 /** Reads only OS-provided bitmaps or granted local content URIs, with bounded previews. */
 internal class NotificationImages(private val context: Context) {
-    private val icons = mutableMapOf<String, String?>()
+    private val icons = mutableMapOf<String, String>()
     fun clear() = icons.clear()
     fun removeIcon(packageName: String) { icons.remove(packageName) }
     fun appIcon(packageName: String): String? {
-        if (icons.containsKey(packageName)) return icons[packageName]
+        icons[packageName]?.let { return it }
         val icon = runCatching {
             val drawable = context.packageManager.getApplicationIcon(packageName)
             val bitmap = Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888)
@@ -27,7 +27,8 @@ internal class NotificationImages(private val context: Context) {
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); bitmap.recycle()
             if (stream.size() > 12288) null else Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
         }.getOrNull()
-        icons[packageName] = icon
+        // A temporary lookup failure must not suppress the icon until disconnect.
+        if (icon != null) icons[packageName] = icon
         return icon
     }
     @Suppress("DEPRECATION")
