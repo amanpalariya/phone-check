@@ -12,7 +12,7 @@ A lightweight Android app and macOS companion. One phone paired to one Mac. The 
 - Include only essential pairing, permission explanations, connection status, and empty/error states.
 - Reconcile active notifications after reconnect; deduplicate updates. Expire stale commands and avoid replaying old alerts.
 - Support big text, inbox, messaging, bounded picture previews, progress, groups, media/call notification controls, ordinary PendingIntent actions and one text/choice RemoteInput. Custom RemoteViews use a text fallback. Unsupported attachment/multiple-input actions stay disabled. Calls here mean notification controls, not audio transport.
-- Show phone battery level, charging state, and active Battery Saver in the Mac panel header, replacing the connection dot and header notification count; the menu-bar notification count remains. Keep device status independent of notification state and transport.
+- Show phone battery level, charging state, and active Battery Saver in the Mac panel header, replacing the connection dot and header notification count; the menu-bar notification count remains. Hide the battery indicator while unpaired. Keep device status independent of notification state and transport.
 - Exclude status dashboards, clipboard, file transfer, notification history, accounts, and multi-device support.
 - Keep code readable and modular: separate capture/assets, command validation/execution, transport, presentation, and deterministic fixtures without adding speculative frameworks.
 

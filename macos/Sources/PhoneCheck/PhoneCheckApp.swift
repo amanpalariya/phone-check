@@ -151,10 +151,14 @@ struct CompanionView: View {
             Spacer(minLength: 0)
             Text("Phone Check").font(.headline)
             Spacer(minLength: 0)
-            PhoneBatteryIndicator(battery: showsSamples ? nil : model.battery,
-                                  connected: !showsSamples && model.connected,
-                                  status: showsSamples ? "Testbed" : model.status)
-                .frame(width: 82, alignment: .trailing)
+            ZStack(alignment: .trailing) {
+                if model.paired {
+                    PhoneBatteryIndicator(battery: showsSamples ? nil : model.battery,
+                                          connected: !showsSamples && model.connected,
+                                          status: showsSamples ? "Testbed" : model.status)
+                }
+            }
+            .frame(width: 82, height: 28, alignment: .trailing)
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
     }
