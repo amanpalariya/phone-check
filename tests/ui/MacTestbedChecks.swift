@@ -66,7 +66,7 @@ func runPaneChecks() {
     let anchor = NSRect(x: -800, y: screen.maxY, width: 30, height: 24)
     let frame = NotificationPaneLayout.frame(in: screen, anchor: anchor)
     precondition(frame.midX == anchor.midX && frame.maxY == anchor.minY - 2)
-    precondition(frame.height == 680 && screen.contains(frame), "Pane must fit secondary screens with negative origins")
+    precondition(frame.width == 444 && frame.height == 680 && screen.contains(frame), "Pane must fit secondary screens with negative origins")
     for x in [screen.minX, screen.maxX - 20] {
         let edge = NotificationPaneLayout.frame(in: screen, anchor: NSRect(x: x, y: screen.maxY, width: 20, height: 24))
         precondition(screen.contains(edge), "Menu-bar anchors near either edge must stay onscreen")
@@ -81,8 +81,6 @@ func runPaneChecks() {
     testbed.showsInPane = true
     let controller = NotificationPaneController(model: model, testbed: testbed)
     func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.3)) }
-    let originalSystem = NotificationAppearance.shared.usesSystemBackdrop
-    NotificationAppearance.shared.usesSystemBackdrop = true
     controller.show()
     settle()
     let panel = NSApp.windows.compactMap { $0 as? NotificationPanel }.first!
@@ -96,7 +94,7 @@ func runPaneChecks() {
     precondition(surface.backdrop.material == .underWindowBackground)
     precondition(surface.backdrop.blendingMode == .behindWindow && surface.backdrop.layer?.mask != nil)
     if (26...27).contains(ProcessInfo.processInfo.operatingSystemVersion.majorVersion) {
-        precondition(surface.compositor.isAvailable, "The tested OS must provide a configurable native backdrop")
+        precondition(surface.compositor.isAvailable, "The tested OS must provide a native backdrop")
     }
     if surface.compositor.isAvailable && !NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
         precondition(!surface.compositor.isHidden && surface.backdrop.isHidden,
@@ -109,28 +107,17 @@ func runPaneChecks() {
             }
             return (gaussian?.value(forKey: "inputRadius") as? NSNumber)?.doubleValue
         }
-        precondition(kernel(surface.compositor) == NotificationAppearance.shared.blurAmount * 3,
-                     "The backdrop must apply saved blur before the slider is touched")
+        precondition(kernel(surface.compositor) == 3,
+                     "The backdrop must always use the default blur")
         precondition(panel.value(forKey: "shouldAutoFlattenLayerTree") as? Bool == false,
                      "Idle windows must retain live behind-window sampling")
         precondition(surface.compositor.blurLayer!.value(forKey: "groupName") as? String != "NSCGSWindowBehindWindowCaptureBackdropGroup",
                      "Backdrop filtering must not share the notification materials' capture group")
-        let savedBlur = NotificationAppearance.shared.blurAmount
-        NotificationAppearance.shared.blurAmount = 0
-        settle()
         let blur = surface.compositor.blurLayer!
-        precondition(kernel(surface.compositor) == 0,
-                     "The appearance setting must reach AppKit's behind-window blur")
         precondition(blur.value(forKey: "windowServerAware") as? Bool == true,
                      "The blur must sample behind the window")
-        NotificationAppearance.shared.blurAmount = 12
-        settle()
-        precondition(kernel(surface.compositor) == 36,
-                     "Live changes must reach the native background filter")
         precondition(surface.host.layer?.filters?.isEmpty != false,
                      "The notification host must never receive a blur filter")
-        NotificationAppearance.shared.blurAmount = savedBlur
-        settle()
     }
     let originalAppearance = surface.appearance
     for system in [NSAppearance.Name.aqua, .darkAqua] {
@@ -138,7 +125,7 @@ func runPaneChecks() {
         settle()
         precondition(surface.backdrop.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,
                      "Backdrop must remain dark in both system appearances")
-        let expected: CGFloat = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 0.32
+        let expected: CGFloat = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency ? 1 : 0.16
         precondition(abs(surface.backdrop.alphaValue - expected) < 0.001)
         precondition(surface.host.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == system)
     }
@@ -150,22 +137,24 @@ func runPaneChecks() {
     precondition(surface.compositor.layer?.frame == surface.compositor.frame,
                  "The compositor root must retain AppKit's position when the backdrop shrinks")
     let maskTemplate = surface.backdropMaskImage
+    let maskPixels = NSBitmapImageRep(cgImage: maskTemplate!.cgImage(forProposedRect: nil, context: nil, hints: nil)!)
+    let middleY = maskPixels.pixelsHigh / 2
+    precondition(maskPixels.colorAt(x: 0, y: middleY)!.alphaComponent == 0 &&
+                 maskPixels.colorAt(x: maskPixels.pixelsWide - 1, y: middleY)!.alphaComponent == 0,
+                 "Backdrop must reach full transparency before its window edge")
+    precondition(maskPixels.colorAt(x: 12, y: middleY)!.alphaComponent < 0.02,
+                 "The outer feather must ease in gently over a bright desktop")
+    precondition(maskPixels.colorAt(x: 24, y: 24)!.alphaComponent == 0,
+                 "Rounded falloff must clear the corners instead of outlining a rectangle")
+    precondition(surface.subviews.filter { $0 !== surface.host && $0.layer?.backgroundColor != nil }
+        .allSatisfy { $0.layer?.mask?.contentsScale == 1 },
+                 "Wash and input masks must preserve their point-sized feather on Retina displays")
     surface.setContentHeight(300)
     surface.layoutSubtreeIfNeeded()
     precondition(surface.backdrop.frame.height == 366, "Backdrop must follow visible content height")
     precondition(surface.backdropMaskImage === maskTemplate,
                  "Animated backdrop resizing must reuse its feathered image template")
-    let savedTransparency = NotificationAppearance.shared.transparency
-    NotificationAppearance.shared.usesSystemBackdrop = false
-    NotificationAppearance.shared.transparency = 0.5
-    settle()
-    precondition(surface.compositor.alphaValue == 1,
-                 "Strength must not crossfade blurred background with the sharp desktop")
-    NotificationAppearance.shared.transparency = savedTransparency
-    precondition(surface.backdrop.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua,
-                 "Custom strength must keep the backdrop dark")
     surface.appearance = originalAppearance
-    NotificationAppearance.shared.usesSystemBackdrop = originalSystem
     settle()
     precondition(surface.host.frame == surface.bounds, "Content must follow the anchored surface")
     func checkScroll(_ view: NSView) {

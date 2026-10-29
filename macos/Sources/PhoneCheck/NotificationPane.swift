@@ -125,7 +125,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     }
 
     private func root(height: CGFloat, pointerOffset: CGFloat) -> AnyView {
-        AnyView(CompanionView(model: model, testbed: testbed, showTestbed: { [weak self] in self?.showTestbed() },
+        AnyView(CompanionView(model: model, testbed: testbed,
                               showSettings: { [weak self] in self?.showSettings() },
                               pointerOffset: pointerOffset,
                               feedMaximumHeight: max(60, height - 220),
@@ -168,7 +168,11 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
 
     @objc func showSettings() {
         hide()
-        if settingsController == nil { settingsController = CompanionSettingsController(model: model) }
+        if settingsController == nil {
+            settingsController = CompanionSettingsController(model: model, showTestbed: { [weak self] in
+                self?.showTestbed()
+            })
+        }
         settingsController?.show()
     }
 
@@ -247,8 +251,10 @@ final class NotificationPaneSurface: NSView {
     let compositor = CompositorBackdrop(frame: .zero)
     private let inputSurface = NSView()
     private let fallbackFeather = BackdropFeather()
+    private let inputFeather = BackdropFeather()
     private(set) var backdropMaskImage: NSImage?
-    private let dimming = NSImageView()
+    private let dimming = NSView()
+    private let dimmingFeather = BackdropFeather()
 #if PHONECHECK_VISUAL_TEST
     var suppressBackdropTint = false {
         didSet { refreshAppearance() }
@@ -256,7 +262,6 @@ final class NotificationPaneSurface: NSView {
 #endif
     private var contentHeight: CGFloat = 240
     private var maskTemplateSize = NSSize.zero
-    private var appearanceSubscription: AnyCancellable?
     private var accessibilitySubscription: AnyCancellable?
     override var acceptsFirstResponder: Bool { true }
 
@@ -273,25 +278,18 @@ final class NotificationPaneSurface: NSView {
         addSubview(backdrop)
         addSubview(compositor)
         addSubview(inputSurface)
-        dimming.imageScaling = .scaleAxesIndependently
+        dimming.wantsLayer = true
+        dimming.layer?.backgroundColor = NSColor.black.cgColor
         dimming.setAccessibilityElement(false)
         addSubview(dimming)
         host.sizingOptions = []
         host.frame = bounds
         host.autoresizingMask = [.width, .height]
         addSubview(host)
-        appearanceSubscription = NotificationAppearance.shared.$transparency
-            .combineLatest(NotificationAppearance.shared.$usesSystemBackdrop, NotificationAppearance.shared.$blurAmount)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] transparency, system, blur in
-                self?.compositor.radius = blur
-                self?.updateStrength(transparency: transparency, system: system)
-            }
         accessibilitySubscription = NSWorkspace.shared.notificationCenter
             .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
             .sink { [weak self] _ in self?.refreshAppearance() }
         layoutBackdrop()
-        compositor.radius = NotificationAppearance.shared.blurAmount
         refreshAppearance()
     }
 
@@ -316,11 +314,10 @@ final class NotificationPaneSurface: NSView {
         // Notification Center's surrounding wash stays dark in both appearances.
         // Only the backdrop is overridden; notification cards retain the system style.
         backdrop.appearance = NSAppearance(named: .darkAqua)
-        updateStrength(transparency: NotificationAppearance.shared.transparency,
-                       system: NotificationAppearance.shared.usesSystemBackdrop)
+        updateStrength()
     }
 
-    private func updateStrength(transparency: Double, system: Bool) {
+    private func updateStrength() {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         let native = compositor.isAvailable && !reduced
         backdrop.isHidden = native
@@ -330,13 +327,12 @@ final class NotificationPaneSurface: NSView {
             dimming.alphaValue = 0
             return
         }
-        let strength = 1 - transparency
         let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-        let tint = system ? (dark ? 0.10 : 0.08) : 0.08 + 0.32 * strength
-        // Never crossfade filtered output with the sharp desktop. Strength
-        // controls the dark wash; blur amount controls the background filter.
+        let tint = dark ? 0.035 : 0.025
+        // Keep one subtle default wash; accessibility settings still take priority.
+        // Never crossfade filtered output with the sharp desktop.
         compositor.alphaValue = 1
-        backdrop.alphaValue = system ? 0.32 : 0.18 + 0.14 * strength
+        backdrop.alphaValue = 0.16
         dimming.alphaValue = tint
 #if PHONECHECK_VISUAL_TEST
         if suppressBackdropTint { dimming.alphaValue = 0 }
@@ -353,7 +349,7 @@ final class NotificationPaneSurface: NSView {
         backdrop.frame = rect
         dimming.frame = rect
         compositor.frame = rect
-        // Rasterize only the fixed feathered edges. All three renderers stretch
+        // Rasterize only the fixed feathered edges. All backdrop layers stretch
         // the opaque center, so resizing a list does no full-surface image work.
         let templateSize = NSSize(width: min(160, rect.width), height: min(144, rect.height))
         if maskTemplateSize != templateSize {
@@ -366,31 +362,51 @@ final class NotificationPaneSurface: NSView {
             mask.resizingMode = .stretch
             backdropMaskImage = mask
             compositor.maskImage = mask
-            dimming.image = mask
         }
         fallbackFeather.apply(backdropMaskImage, to: backdrop.layer, bounds: backdrop.bounds)
+        dimmingFeather.apply(backdropMaskImage, to: dimming.layer, bounds: dimming.bounds)
+        // The input surface must fade too: even its 1% fill reveals a rectangle
+        // over a white desktop when left outside the backdrop mask.
+        inputFeather.apply(backdropMaskImage, to: inputSurface.layer, bounds: inputSurface.bounds)
     }
 
     private static func featheredMask(size: NSSize) -> NSImage {
-        // Keep the fade in points, so short lists don't acquire sharp edges and
-        // long lists don't get a larger blur field merely because they're taller.
-        let x = min(72 / size.width, 0.48)
-        let y = min(64 / size.height, 0.48)
-        return NSImage(size: size, flipped: false) { rect in
-            func gradient(_ edge: CGFloat) -> NSGradient {
-                NSGradient(colorsAndLocations: (.clear, 0), (.black.withAlphaComponent(0.25), edge * 0.35),
-                           (.black.withAlphaComponent(0.75), edge * 0.7), (.black, edge),
-                           (.black, 1 - edge), (.black.withAlphaComponent(0.75), 1 - edge * 0.7),
-                           (.black.withAlphaComponent(0.25), 1 - edge * 0.35), (.clear, 1))!
-            }
-            gradient(x).draw(in: rect, angle: 0)
-            let vertical = NSImage(size: size, flipped: false) { bounds in
-                gradient(y).draw(in: bounds, angle: 90)
-                return true
-            }
-            vertical.draw(in: rect, from: .zero, operation: .destinationIn, fraction: 1)
-            return true
+        // Zero slope and curvature at each end avoid a visible seam where the
+        // desktop starts blurring. Keep the falloff fixed in points as the
+        // opaque center stretches, including on short notification lists.
+        let horizontal = min(72, size.width * 0.48)
+        let vertical = min(64, size.height * 0.48)
+        let width = Int(size.width.rounded(.up))
+        let height = Int(size.height.rounded(.up))
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: width, pixelsHigh: height,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: width * 4, bitsPerPixel: 32)!
+        func falloff(_ distance: CGFloat, over extent: CGFloat) -> CGFloat {
+            let t = min(1, max(0, distance / extent))
+            let eased = t * t * t * (t * (t * 6 - 15) + 10)
+            // Keep the outer wash faint, concentrating the effect near the cards.
+            return eased * eased
         }
+        let pixels = bitmap.bitmapData!
+        for row in 0..<height {
+            let y = CGFloat(row)
+            let dy = max(0, 1 - min(y, CGFloat(height - 1) - y) / vertical)
+            for column in 0..<width {
+                let x = CGFloat(column)
+                let dx = max(0, 1 - min(x, CGFloat(width - 1) - x) / horizontal)
+                // A radial corner falloff avoids the rectangular contour made
+                // by multiplying independent horizontal and vertical fades.
+                let alpha = falloff(1 - hypot(dx, dy), over: 1)
+                let offset = row * bitmap.bytesPerRow + column * 4
+                pixels[offset] = 0
+                pixels[offset + 1] = 0
+                pixels[offset + 2] = 0
+                pixels[offset + 3] = UInt8((255 * alpha).rounded())
+            }
+        }
+        let image = NSImage(size: size)
+        image.addRepresentation(bitmap)
+        return image
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }

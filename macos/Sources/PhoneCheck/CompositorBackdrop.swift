@@ -19,7 +19,7 @@ final class CompositorBackdrop: NSVisualEffectView {
     private var registeredByUs = false
     var blurLayer: CALayer? { capture }
     var isAvailable: Bool { capture != nil }
-    var radius: Double = 1 { didSet { updateFilter() } }
+    private let radius: Double = 1
     override var material: NSVisualEffectView.Material { get { .headerView } set {} }
     override var blendingMode: NSVisualEffectView.BlendingMode { get { .behindWindow } set {} }
     override var maskImage: NSImage? {
@@ -174,7 +174,10 @@ final class BackdropFeather {
                 width: max(0.001, 1 - (insets.left + insets.right) / image.size.width),
                 height: max(0.001, 1 - (insets.top + insets.bottom) / image.size.height))
         }
-        layer.contentsScale = target?.contentsScale ?? 1
+        // The cached mask is rasterized at one pixel per point. Using the
+        // display's Retina scale here halves its nine-slice feather in points.
+        // All layers must retain the same falloff as the image's cap insets.
+        layer.contentsScale = 1
         layer.frame = bounds
         target?.mask = layer
         CATransaction.commit()

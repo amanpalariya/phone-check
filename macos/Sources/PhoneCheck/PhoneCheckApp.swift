@@ -34,7 +34,6 @@ private final class CompanionPresentation: ObservableObject {
 struct CompanionView: View {
     @ObservedObject var model: Companion
     @ObservedObject var testbed = NotificationTestbed()
-    var showTestbed: () -> Void = {}
     var showSettings: () -> Void = {}
     var pointerOffset: CGFloat = 0
     var feedMaximumHeight: CGFloat = 480
@@ -120,11 +119,6 @@ struct CompanionView: View {
             Menu {
                 Button("Settings…", action: showSettings)
                     .keyboardShortcut(",")
-                Divider()
-                Button("Notification testbed…") {
-                    NSApp.activate(ignoringOtherApps: true)
-                    showTestbed()
-                }
                 Divider()
                 Button("Quit Phone Check") { NSApplication.shared.terminate(nil) }
                     .keyboardShortcut("q")

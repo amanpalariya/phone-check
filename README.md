@@ -34,9 +34,9 @@ SIGNING_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/build-macos.s
 
 Open `macos/Package.swift` in Xcode to edit the Mac sources. Launch the packaged `.app`, rather than the bare Swift executable, so notification authorization has a bundle identity. Distribution signing and notarization are not configured.
 
-Click the menu-bar icon to open a notification pane beneath the icon: separate glass cards over a softly fading desktop blur. Click the icon again, press Escape, or click outside to close it. Search, expanded groups and replies stay in the pane. The title and search share a notification-style card near the menu bar. The backdrop uses a blur-only compositor renderer with a standard-material fallback; Liquid Glass is reserved for the cards. The soft backdrop follows the visible content and stays dark in both light and dark mode. A bottom fade signals more notifications below and disappears at the end. **Settings → Appearance…** offers separate blur and transparency controls; your choices are saved. The blur-only path uses undocumented macOS compositor APIs on supported OS generations.
+Click the menu-bar icon to open a notification pane beneath the icon: separate glass cards over a softly fading desktop blur. Click the icon again, press Escape, or click outside to close it. Search, expanded groups and replies stay in the pane. The title and search share a notification-style card near the menu bar. The backdrop uses a blur-only compositor renderer with a standard-material fallback; Liquid Glass is reserved for the cards. The soft backdrop follows the visible content and stays dark in both light and dark mode. A bottom fade signals more notifications below and disappears at the end. Blur and backdrop strength use fixed defaults without appearance controls. The blur-only path uses undocumented macOS compositor APIs on supported OS generations.
 
-For local UI testing, open the Mac companion's settings menu and choose **Notification testbed…**.
+For local UI testing, open **Settings → Advanced → Notification testbed → Open…** on the Mac.
 Add any of the 16 sample types, or choose **Show all**. Expand samples to try actions and replies;
 use **Update last**, **Remove last**, and **Action result** to exercise updates, removals, and failures.
 Enable **Show in notification pane**, then click Phone Check in the menu bar to view and interact with
@@ -52,13 +52,13 @@ macos/build/PhoneCheckMaterialReview.app/Contents/MacOS/PhoneCheckMaterialReview
 open -n macos/build/PhoneCheckMaterialReview.app --args --blur-review
 # Actual pane over the same background (add --dark for dark appearance):
 open -n macos/build/PhoneCheckMaterialReview.app --args --pane-blur-review
-# Live backdrop controls over a scrollable text pattern (add --dark for dark cards):
-open macos/build/PhoneCheckMaterialReview.app --args --pane-blur-review --backdrop-controls --appearance-defaults --scroll-through-review --more
+# Pane over a scrollable text pattern (add --dark for dark cards):
+open macos/build/PhoneCheckMaterialReview.app --args --pane-blur-review --scroll-through-review --more
 # Live panel preview with local samples:
 open -n macos/build/PhoneCheckMaterialReview.app --args --pane
 ```
 
-Add `--single` (without `--more`) to check short-list alignment, or `--no-backdrop-tint` to inspect blur independently of the dark wash. Automatic appearance defaults to blur 1 with an 8% dark wash in light mode and 10% in dark mode.
+Add `--single` (without `--more`) to check short-list alignment, or `--no-backdrop-tint` to inspect blur independently of the dark wash. The fixed defaults use blur 1 with a 2.5% dark wash in light mode and 3.5% in dark mode.
 
 For backdrop review, keep one preview instance open and inspect a composed-screen capture using macOS Screenshot. Window-only captures omit the content behind the panel. Scrolling over exposed backdrop must leave the underlying pattern's scroll position unchanged; the notification list must still scroll normally. The scroll fixture records its underlying offset in `/tmp/phonecheck-behind-scroll-offset`.
 
@@ -70,7 +70,7 @@ swift run --package-path macos PhoneCheckChecks
 
 ## Pair
 
-1. Open **Settings…** from the Mac companion’s gear menu (or press **⌘,**) and choose **Pair phone** in the Phone tab. Settings shows the paired phone, connection status, and **Unpair…**; the Appearance tab contains backdrop controls.
+1. Open **Settings…** from the Mac companion’s gear menu (or press **⌘,**) and choose **Pair phone** in the Phone tab. Settings shows the paired phone, connection status, and **Unpair…**; the Advanced tab contains the notification testbed.
 2. Enter its pairing code in the Android app within five minutes. Both devices must be on the same private IPv4 LAN; choose the Mac's Wi-Fi address if several addresses appear. Guest Wi-Fi client isolation can prevent connections.
 3. Grant Android notification access and, on Android 17+, local network access. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
 4. Enable Mac notifications in the companion. Allow local network access if macOS asks.

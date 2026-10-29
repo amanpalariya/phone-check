@@ -37,7 +37,14 @@ struct MaterialReview {
         if CommandLine.arguments.contains("--settings") {
             let model = Companion(startServices: false)
             if CommandLine.arguments.contains("--paired") { model.showPreview([]) }
-            let controller = CompanionSettingsController(model: model)
+            let testbedWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 581, height: 680),
+                                        styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            testbedWindow.title = "Notification Testbed"
+            testbedWindow.isReleasedWhenClosed = false
+            testbedWindow.contentView = NSHostingView(rootView: NotificationTestbedView())
+            let controller = CompanionSettingsController(model: model, showTestbed: {
+                testbedWindow.makeKeyAndOrderFront(nil)
+            })
             if CommandLine.arguments.contains("--dark") {
                 controller.window.appearance = NSAppearance(named: .darkAqua)
             }
@@ -246,10 +253,6 @@ private struct RichReview: View {
 
 // Separate windows are essential: the material must sample pixels BEHIND the window.
 private func runBlurReview() {
-    if CommandLine.arguments.contains("--appearance-defaults") {
-        NotificationAppearance.shared.usesSystemBackdrop = true
-        NotificationAppearance.shared.blurAmount = 1
-    }
     let backdrop = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 920, height: 600),
                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
     backdrop.title = "Backdrop material comparison"
@@ -323,11 +326,6 @@ private func runBlurReview() {
             label.frame = NSRect(x: 30 + index * 225, y: 520, width: 205, height: 30)
             content.addSubview(label)
         }
-    }
-    if CommandLine.arguments.contains("--backdrop-controls") {
-        let controls = NSHostingView(rootView: NotificationAppearanceSettings())
-        controls.frame = NSRect(x: 0, y: 60, width: 230, height: 500)
-        content.addSubview(controls)
     }
     samples.contentView = content
     // Keep separate window groups so behind-window materials can sample the pattern.
