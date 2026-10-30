@@ -1,8 +1,10 @@
 import Foundation
+#if !DEBUG
 import Security
+#endif
 
-/// Classic login Keychain for our own item: no access-group or Apple-issued signing dependency.
-/// Ad hoc rebuilds can still trigger macOS's normal Keychain authorization prompt.
+/// Development sessions survive ad hoc re-signing without accessing Keychain.
+/// Release sessions stay in the login Keychain, separate from development files.
 enum CloudTokenStore {
     struct Record: Codable {
         let uid: String
@@ -10,14 +12,36 @@ enum CloudTokenStore {
         var displayName: String? = nil
         var email: String? = nil
     }
+    #if DEBUG
+    static var developmentFile: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent((Bundle.main.bundleIdentifier ?? "dev.phonecheck.mac") + ".firebase.development", isDirectory: true)
+            .appendingPathComponent("session.json")
+    }
+    static func load() throws -> Record? {
+        let file = developmentFile
+        guard FileManager.default.fileExists(atPath: file.path) else { return nil }
+        return try JSONDecoder().decode(Record.self, from: Data(contentsOf: file))
+    }
+    static func save(_ record: Record) throws {
+        let file = developmentFile
+        let directory = file.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        try JSONEncoder().encode(record).write(to: file, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    }
+    static func clear() throws {
+        let file = developmentFile
+        if FileManager.default.fileExists(atPath: file.path) {
+            try FileManager.default.removeItem(at: file)
+        }
+    }
+    #else
     private static var query: [String: Any] {
-        #if DEBUG
-        let suffix = ".development"
-        #else
-        let suffix = ""
-        #endif
         return [kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: (Bundle.main.bundleIdentifier ?? "dev.phonecheck.mac") + ".firebase" + suffix,
+                kSecAttrService as String: (Bundle.main.bundleIdentifier ?? "dev.phonecheck.mac") + ".firebase",
                 kSecAttrAccount as String: "session"]
     }
     static func load() throws -> Record? {
@@ -40,4 +64,5 @@ enum CloudTokenStore {
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else { throw CredentialError.unavailable }
     }
+    #endif
 }

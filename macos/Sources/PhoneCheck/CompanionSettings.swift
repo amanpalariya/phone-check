@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-enum SettingsSection: String { case general, account, devices, advanced }
+enum SettingsSection: String { case general, advanced }
 
 /// A native preferences toolbar, independent of the transient notification pane.
 final class CompanionSettingsController {
@@ -15,16 +15,13 @@ final class CompanionSettingsController {
         tabs.title = "Phone Check Settings"
         func add<Content: View>(_ section: SettingsSection, title: String, symbol: String, content: Content) {
             let controller = NSHostingController(rootView: content)
-            controller.preferredContentSize = NSSize(width: 560, height: 460)
+            controller.preferredContentSize = NSSize(width: 560, height: 400)
             let item = NSTabViewItem(viewController: controller)
             item.identifier = section.rawValue; item.label = title
             item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
             tabController.addTabViewItem(item)
         }
-        add(.general, title: "General", symbol: "gearshape", content: GeneralSettingsView(model: model))
-        add(.account, title: "Account", symbol: "person.crop.circle", content: AccountSettingsView(model: model))
-        add(.devices, title: "Devices", symbol: "laptopcomputer.and.iphone",
-            content: PhoneSettingsView(model: model, showPairing: showPairing))
+        add(.general, title: "General", symbol: "gearshape", content: GeneralSettingsView(model: model, showPairing: showPairing))
         #if DEBUG
         add(.advanced, title: "Advanced", symbol: "gearshape.2",
             content: AdvancedSettingsView(showTestbed: showTestbed))
@@ -35,7 +32,7 @@ final class CompanionSettingsController {
         window.toolbarStyle = .preference
         window.toolbar?.displayMode = .iconAndLabel
         window.isReleasedWhenClosed = false
-        window.setContentSize(NSSize(width: 560, height: 460))
+        window.setContentSize(NSSize(width: 560, height: 400))
         window.setFrameAutosaveName("PhoneCheckSettings")
         window.center()
     }
@@ -64,10 +61,11 @@ private struct SettingsPage<Content: View>: View {
 
 private struct GeneralSettingsView: View {
     @ObservedObject var model: Companion
+    var showPairing: () -> Void
     var body: some View {
         SettingsPage {
-            HStack(spacing: 16) {
-                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 56, height: 56)
+            HStack(spacing: 14) {
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 48, height: 48)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Phone Check").font(.title2.weight(.semibold))
@@ -76,21 +74,31 @@ private struct GeneralSettingsView: View {
                 }
             }.padding(.bottom, 4)
             GroupBox {
-                HStack(spacing: 14) {
-                    SettingsSymbol(name: "bell.badge")
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Mac notifications").font(.body.weight(.medium))
-                        Text(model.alertsAllowed ? "Notifications are allowed." : "Show alerts for new phone notifications.")
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 12)
-                    Button(model.alertsAllowed ? "Open Settings…" : "Enable…") {
-                        if model.alertsAllowed { model.openNotificationSettings() } else { model.allowAlerts() }
-                    }
-                }.padding(12)
+                VStack(spacing: 0) {
+                    AccountSettingsRow(model: model)
+                    Divider().padding(.leading, 62)
+                    PhoneSettingsRow(model: model, showPairing: showPairing)
+                }
+            }
+            if !model.alertsAllowed {
+                GroupBox {
+                    HStack(spacing: 14) {
+                        SettingsSymbol(name: "bell.badge", color: .orange)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Mac notifications").font(.body.weight(.medium))
+                            Text("Allow alerts for new phone notifications.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 12)
+                        Button("Enable…", action: model.allowAlerts)
+                    }.padding(12)
+                }
             }
             Label("Notification content is encrypted between your devices.", systemImage: "lock.shield")
                 .font(.callout).foregroundStyle(.secondary).padding(.horizontal, 4)
+            if let error = model.error {
+                Label(error, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
+            }
         }
         .onAppear { model.refreshAuthorization() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -103,50 +111,34 @@ private final class SettingsConfirmation: ObservableObject {
     @Published var showing = false
 }
 
-private struct AccountSettingsView: View {
+private struct AccountSettingsRow: View {
     @ObservedObject var model: Companion
     @ObservedObject private var account = CloudAccount.shared
     @StateObject private var confirmation = SettingsConfirmation()
     private var name: String { account.displayName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Google account" }
-    private var initials: String {
-        guard let name = account.displayName, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
-        return name.split(whereSeparator: { $0.isWhitespace }).prefix(2).compactMap(\.first).map(String.init).joined().uppercased()
-    }
     var body: some View {
-        SettingsPage {
-            GroupBox {
-                VStack(spacing: 0) {
-                    ZStack {
-                        Circle().fill(Color.primary.opacity(0.08))
-                        if initials.isEmpty { Image(systemName: "person.fill").font(.system(size: 40)).foregroundStyle(.secondary) }
-                        else { Text(initials).font(.system(size: 36, weight: .medium)).foregroundStyle(.primary) }
-                    }
-                    .frame(width: 104, height: 104).accessibilityHidden(true)
-                    .padding(.bottom, 18)
-                    Text(account.signedIn ? name : "Sign in to Phone Check")
-                        .font(.title2.weight(.semibold)).multilineTextAlignment(.center).textSelection(.enabled)
-                    Text(account.signedIn ? account.email ?? "Signed in with Google" : "Sign in to sync beyond your local network.")
-                        .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        .textSelection(.enabled).padding(.top, 5)
-                    if account.signedIn {
-                        Button("Sign Out…") { confirmation.showing = true }
-                            .controlSize(.large).padding(.top, 22)
-                    } else {
-                        Button(account.busy ? "Signing in…" : "Sign in with Google", action: account.signIn)
-                            .buttonStyle(.borderedProminent).controlSize(.large)
-                            .disabled(account.busy || !account.configured).padding(.top, 22)
-                    }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 14) {
+                SettingsSymbol(name: "person.crop.circle", color: .blue)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(account.signedIn ? name : "Google account").font(.body.weight(.medium))
+                        .textSelection(.enabled)
+                    Text(account.signedIn ? account.email ?? "Signed in with Google" : "Optional for syncing away from your local network.")
+                        .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                 }
-                .frame(maxWidth: .infinity).padding(.vertical, 24).padding(.horizontal, 20)
+                Spacer(minLength: 12)
+                if account.signedIn {
+                    Button("Sign Out…") { confirmation.showing = true }
+                } else {
+                    Button(account.busy ? "Signing in…" : "Sign in with Google", action: account.signIn)
+                        .disabled(account.busy || !account.configured)
+                }
             }
-            if account.signedIn {
-                Text("Your name and email are managed by Google.")
-                    .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity)
-            }
-            if let error = account.error ?? model.error {
+            if let error = account.error {
                 Label(error, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
             }
         }
+        .padding(12)
         .task { await account.refreshProfile() }
         .onChange(of: account.signedIn) { _, signedIn in
             if signedIn { Task { await account.refreshProfile() } }
@@ -158,42 +150,41 @@ private struct AccountSettingsView: View {
     }
 }
 
-/// The existing paired-phone controls stay on a dedicated device page.
-struct PhoneSettingsView: View {
+private struct PhoneSettingsRow: View {
     @ObservedObject var model: Companion
-    var showPairing: () -> Void = {}
+    var showPairing: () -> Void
     @StateObject private var confirmation = SettingsConfirmation()
+    private var connectionStatus: String {
+        guard model.connected else { return model.status }
+        switch model.connectionRoute {
+        case .local: return "Connected over local network"
+        case .cloud: return "Connected over cloud"
+        case nil: return model.status
+        }
+    }
     var body: some View {
-        SettingsPage {
-            GroupBox {
-                HStack(spacing: 16) {
-                    Image(systemName: "iphone").font(.system(size: 36, weight: .light))
-                        .frame(width: 54, height: 64).accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(model.paired ? model.phoneName ?? "Android phone" : "Pair your phone")
-                            .font(.title3.weight(.semibold)).textSelection(.enabled)
-                        Text(model.paired ? model.status : "Open Phone Check on Android.")
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 12)
-                    if model.paired { Button("Unpair…") { confirmation.showing = true } }
-                    else { Button("Pair Phone…", action: showPairing).buttonStyle(.borderedProminent) }
-                }.padding(14)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                SettingsSymbol(name: "smartphone", color: .purple)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(model.paired ? model.phoneName ?? "Android phone" : "Pair your phone")
+                        .font(.body.weight(.medium)).textSelection(.enabled)
+                    Text(model.paired ? connectionStatus : "Open Phone Check on Android to get started.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 12)
+                if model.paired { Button("Unpair…") { confirmation.showing = true } }
+                else { Button("Pair Phone…", action: showPairing).buttonStyle(.borderedProminent) }
             }
             if model.paired && !model.connected {
                 HStack {
                     Text("Make sure both devices are online.").foregroundStyle(.secondary)
                     Spacer()
                     Button("Reconnect", action: model.startListening)
-                }.font(.callout)
-            }
-            Text(model.paired ? "Notifications and their actions sync while your devices are connected."
-                 : "Scan the QR code on your Mac. Sign in on both devices for cloud sync.")
-                .font(.callout).foregroundStyle(.secondary).padding(.horizontal, 4)
-            if let error = model.error {
-                Label(error, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
+                }.font(.callout).padding(.leading, 52)
             }
         }
+        .padding(12)
         .alert("Unpair this phone?", isPresented: $confirmation.showing) {
             Button("Cancel", role: .cancel) {}
             Button("Unpair", role: .destructive, action: model.unpair)
@@ -203,10 +194,11 @@ struct PhoneSettingsView: View {
 
 private struct SettingsSymbol: View {
     var name: String
+    var color: Color = .accentColor
     var body: some View {
         Image(systemName: name).font(.system(size: 20, weight: .regular))
-            .foregroundStyle(.primary).frame(width: 38, height: 38)
-            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 9))
+            .foregroundStyle(.white).frame(width: 34, height: 34)
+            .background(color.gradient, in: RoundedRectangle(cornerRadius: 8))
             .accessibilityHidden(true)
     }
 }

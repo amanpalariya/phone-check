@@ -33,7 +33,9 @@ final class CloudAccount: ObservableObject {
     }
     private init() {
         #if PHONECHECK_VISUAL_TEST
-        signedIn = true; displayName = "Alex Parker"; email = "alex@example.com"
+        if !CommandLine.arguments.contains("--signed-out") {
+            signedIn = true; displayName = "Alex Parker"; email = "alex@example.com"
+        }
         profileLoaded = true
         return
         #else

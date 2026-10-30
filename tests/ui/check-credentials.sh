@@ -12,6 +12,8 @@ with open(sys.argv[1], 'wb') as f:
                       CFBundleExecutable='Checks', CFBundlePackageType='APPL'), f)
 PY
 swiftc -D DEBUG -parse-as-library "$ROOT/macos/Sources/PhoneCheck/Credentials.swift" \
+    "$ROOT/macos/Sources/PhoneCheck/CloudTokenStore.swift" \
+    "$ROOT/tests/ui/CloudTokenStorageChecks.swift" \
     "$ROOT/tests/ui/CredentialStorageChecks.swift" -o "$APP/Contents/MacOS/Checks"
 # No Keychain read, write, or delete symbols may be linked into this storage path.
 if nm -u "$APP/Contents/MacOS/Checks" | rg -q '_SecItem'; then
@@ -20,3 +22,12 @@ if nm -u "$APP/Contents/MacOS/Checks" | rg -q '_SecItem'; then
 fi
 "$APP/Contents/MacOS/Checks" write
 "$APP/Contents/MacOS/Checks" read
+# Release storage must still compile against Keychain; never run it against real items.
+swiftc -emit-library "$ROOT/macos/Sources/PhoneCheck/Credentials.swift" \
+    "$ROOT/macos/Sources/PhoneCheck/CloudTokenStore.swift" -o "$CHECK_DIR/ReleaseStorage.dylib"
+for symbol in _SecItemCopyMatching _SecItemUpdate _SecItemAdd _SecItemDelete; do
+    if ! nm -u "$CHECK_DIR/ReleaseStorage.dylib" | rg -q "$symbol"; then
+        echo "Release storage missing Keychain operation: $symbol" >&2
+        exit 1
+    fi
+done

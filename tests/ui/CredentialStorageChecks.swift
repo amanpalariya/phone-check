@@ -5,6 +5,7 @@ struct CredentialStorageChecks {
     static func main() throws {
         // The runner creates a unique bundle, so checks cannot touch app pairing.
         precondition(Bundle.main.bundleIdentifier?.hasPrefix("dev.phonecheck.credentials-checks.") == true)
+        try checkCloudTokenStorage()
         let file = Credentials.developmentFile
         let directory = file.deletingLastPathComponent()
         let original = Credentials(secret: Data(repeating: 42, count: 32), peer: "test-phone", phoneName: "Test phone")

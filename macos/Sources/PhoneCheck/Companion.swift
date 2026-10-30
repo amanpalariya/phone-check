@@ -492,9 +492,13 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         center.removePendingNotificationRequests(withIdentifiers: [key])
     }
     func refreshAuthorization() {
+        #if PHONECHECK_VISUAL_TEST
+        return
+        #else
         center.getNotificationSettings { [weak self] settings in
             DispatchQueue.main.async { self?.alertsAllowed = settings.authorizationStatus == .authorized }
         }
+        #endif
     }
     func allowAlerts() {
         center.getNotificationSettings { [weak self] settings in
