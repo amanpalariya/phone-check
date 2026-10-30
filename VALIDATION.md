@@ -1,5 +1,17 @@
 # Validation — October 27, 2026
 
+## Seekbar confirmation and 400 ms feedback — October 30, 2026
+
+- Retain the local seek target after dispatch instead of immediately returning to the old phone position. Advance the target locally during playback, ignore stale in-flight positions, and return control to phone playback only after a newer update matches the requested position. Track/session changes, errors and view removal clear the pending target; missing confirmation times out after ten seconds with explicit feedback.
+- Increased the shared action busy-feedback and media buffering delay from 200 ms to 400 ms. Commands still dispatch immediately; keyboard/accessibility seek input retains its separate input debounce.
+- Mac build/packaging and code-signature verification passed; updated and relaunched `/Applications/Phone Check.app`. Regression checks passed for seek release, stale phone updates, confirmed handoff, advancement while awaiting confirmation, a new drag replacing the old seek, reset, and the revised 400 ms feedback/cancellation behavior. Existing media/seek command and testbed checks also pass. This change was verified with local regressions, without another physical-device playback run; Android code is unchanged.
+
+## Stable action feedback — October 30, 2026
+
+- Separated immediate command admission/duplicate suppression from visible busy state. Fast commands do not publish transient UI updates; commands still pending after 200 ms show busy feedback. Success, failure, removal and reset cancel the delay, and late receipts cannot clear a newer command's indicator.
+- Applied delayed feedback to media, ordinary actions, replies, suggestions and dismiss controls. Spinners reuse fixed space (the notification chevron slot for rows); they no longer insert into the header or preview. Media buffering also waits 200 ms. Kept Play/Pause in one persistent control, disabled inherited notification transitions inside playback controls, and retained the selected player across playback sort changes.
+- Mac build/packaging and signature verification passed; installed and relaunched `/Applications/Phone Check.app`. Android did not need an update. Timing regressions passed for fast completion with zero presentation publications, the 200 ms boundary, duplicate prevention, reset/removal cancellation, overlapping command lifetimes and immediate errors. Existing testbed, media/seek, feed motion/interruption and pane geometry/interaction checks passed. Native pane checks passed on a rerun after an initial focus-sensitive assertion failure; no pane production code was changed.
+
 ## Media session controls and header player — October 30, 2026
 
 - Added notification-bound Android `MediaController` / `PlaybackState` capabilities, metadata/state callbacks, bounded artwork, custom actions and original icons for localized legacy PendingIntent controls. Media lives in the Mac header with multiple-player selection, outside notification rows, groups, search results, counts and native banners.

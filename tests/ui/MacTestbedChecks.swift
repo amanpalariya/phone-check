@@ -1,8 +1,11 @@
 import AppKit
 import SwiftUI
+import Combine
 import PhoneCheckCore
 
 func runTestbedChecks() {
+    runActionFeedbackChecks()
+    runSeekPresentationChecks()
     let model = NotificationTestbed()
     func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.5)) }
     for kind in NotificationFixtures.Kind.allCases {
@@ -81,6 +84,94 @@ func runTestbedChecks() {
     precondition(sent.count == 2, "Removed media capabilities must not execute")
     mediaCommands.reset()
     print("Mac testbed, media capability, seek command, and reset checks passed")
+}
+
+
+private func runActionFeedbackChecks() {
+    let notice = NotificationFixtures.make(.media)[0]
+    let action = notice.actions![0]
+    var sent: [Message] = []
+    let commands = NotificationCommandController(current: { _ in notice }, connected: { true }, send: { sent.append($0) })
+    var busyEvents: [Set<String>] = []
+    var presentationChanges = 0
+    let changes = commands.objectWillChange.sink { presentationChanges += 1 }
+    let observer = commands.$busyKeys.sink { busyEvents.append($0) }
+    func advance(_ seconds: Double) { RunLoop.main.run(until: Date().addingTimeInterval(seconds)) }
+    func send() -> String { commands.perform(notice, action: action); return sent.last!.command! }
+    func complete(_ id: String) { _ = commands.receiveResult(id: id, status: "sent") }
+
+    let fast = send()
+    commands.perform(notice, action: action)
+    precondition(sent.count == 1 && commands.pendingKeys.contains(notice.key), "Duplicate protection must be immediate")
+    precondition(commands.busyKeys.isEmpty, "Fast actions must not change visible controls")
+    advance(0.08)
+    precondition(commands.busyKeys.isEmpty)
+    complete(fast)
+    advance(0.45)
+    precondition(presentationChanges == 0, "Fast actions must not publish transient presentation changes")
+    precondition(busyEvents.allSatisfy(\.isEmpty), "A completed fast action must never flash busy feedback")
+
+    let slow = send()
+    advance(0.3)
+    precondition(commands.busyKeys.isEmpty, "Do not show busy feedback before 400 ms")
+    advance(0.15)
+    precondition(commands.busyKeys == [notice.key], "Slow actions must show busy feedback")
+    complete(slow)
+    precondition(commands.busyKeys.isEmpty && commands.pendingKeys.isEmpty)
+
+    _ = send()
+    commands.reset()
+    advance(0.45)
+    precondition(commands.busyKeys.isEmpty, "Reset must cancel delayed busy feedback")
+    _ = send()
+    commands.notificationRemoved(notice.key)
+    advance(0.45)
+    precondition(commands.busyKeys.isEmpty, "Removal must cancel delayed busy feedback")
+
+    let replaced = send()
+    advance(0.22)
+    complete(replaced)
+    let replacement = send()
+    advance(0.22)
+    precondition(commands.busyKeys.isEmpty, "An old timer must not mark a new command busy")
+    advance(0.22)
+    precondition(commands.busyKeys.contains(notice.key))
+    complete(replaced)
+    precondition(commands.busyKeys.contains(notice.key), "A late receipt must not clear a newer action's feedback")
+    complete(replacement)
+    let failed = send()
+    _ = commands.receiveResult(id: failed, status: "failed")
+    precondition(commands.feedback[notice.key] != nil && commands.busyKeys.isEmpty, "Failures remain immediate")
+    commands.reset()
+    withExtendedLifetime((observer, changes)) { }
+    print("Action feedback delay, fast completion, duplicate protection and timer cancellation checks passed")
+}
+
+
+private func runSeekPresentationChecks() {
+    let state = MediaSeekPresentation()
+    let now = Date(timeIntervalSince1970: 1000)
+    var media = try! JSONDecoder().decode(NoticeMedia.self, from: Data(#"{"playing":false,"buffering":false,"position":10000,"duration":240000,"speed":1,"updatedAt":999000}"#.utf8))
+    state.updateDraft(90000)
+    state.beginSeek(90000, media: media, at: now)
+    precondition(state.position(media: media, at: now) == 90000, "Release must retain the requested seek position")
+    media.updatedAt += 1
+    state.reconcile(media, at: now)
+    precondition(state.draft == 90000, "An old position arriving after dispatch must not snap the slider back")
+    media.position = 90000; media.updatedAt = 1000100
+    state.reconcile(media, at: now.addingTimeInterval(0.1))
+    precondition(state.draft == nil && state.position(media: media, at: now) == 90000, "Confirmed playback must take over without jumping")
+    media.playing = true
+    state.beginSeek(120000, media: media, at: now)
+    precondition(state.position(media: media, at: now.addingTimeInterval(2)) == 122000, "Playback must advance while waiting for the phone")
+    state.updateDraft(160000)
+    state.editing = true
+    media.position = 120000; media.updatedAt += 1
+    state.reconcile(media, at: now)
+    precondition(state.draft == 160000, "A previous seek's echo must not overwrite a new drag")
+    state.reset()
+    precondition(state.draft == nil && !state.editing, "Failure, track change and removal must clear the pending seek")
+    print("Seek release, stale updates, confirmation, playback advancement and replacement checks passed")
 }
 
 

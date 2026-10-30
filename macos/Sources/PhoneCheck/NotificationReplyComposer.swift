@@ -5,7 +5,7 @@ struct NotificationReplyComposer: View {
     let notice: Notice
     @ObservedObject var commands: NotificationCommandController
     @FocusState private var replyFocused: Bool
-    private var pending: Bool { commands.pendingKeys.contains(notice.key) }
+    private var pending: Bool { commands.busyKeys.contains(notice.key) }
     private var actions: [NoticeAction] { notice.actions ?? [] }
     @ViewBuilder var body: some View {
         if let target = commands.replyTarget, target.key == notice.key,

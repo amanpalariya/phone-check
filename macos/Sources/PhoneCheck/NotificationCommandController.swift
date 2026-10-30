@@ -4,10 +4,13 @@ import PhoneCheckCore
 
 /// Owns in-flight commands and transient UI feedback. It never retains notification history.
 final class NotificationCommandController: ObservableObject {
+    static let feedbackDelay: TimeInterval = 0.4
     struct ReplyTarget: Equatable { var key: String; var action: String }
     struct Removal { var key: String; var revision: String }
-    private struct Pending { var key: String; var revision: String; var kind: String; var timer: Timer }
-    @Published private(set) var pendingKeys: Set<String> = []
+    private struct Pending { var key: String; var revision: String; var kind: String; var timer: Timer; var feedbackTimer: Timer }
+    private(set) var pendingKeys: Set<String> = []
+    // Admission is immediate; visible busy feedback waits to avoid flashing on fast actions.
+    @Published private(set) var busyKeys: Set<String> = []
     @Published private(set) var feedback: [String: String] = [:]
     @Published private(set) var error: String?
     @Published var replyTarget: ReplyTarget?
@@ -21,12 +24,11 @@ final class NotificationCommandController: ObservableObject {
         self.current = current; self.connected = connected; self.send = send
     }
     func reset() {
-        pending.values.forEach { $0.timer.invalidate() }; pending = [:]
-        pendingKeys = []; feedback = [:]; error = nil; replyTarget = nil; replyDraft = ""
+        pending.values.forEach { $0.timer.invalidate(); $0.feedbackTimer.invalidate() }; pending = [:]
+        pendingKeys = []; busyKeys = []; feedback = [:]; error = nil; replyTarget = nil; replyDraft = ""
     }
     func notificationChanged(_ notice: Notice) {
-        if feedback[notice.key] == error { error = nil }
-        feedback.removeValue(forKey: notice.key)
+        clearFeedback(notice.key)
         for (id, command) in Array(pending) where command.kind == "dismiss" && command.key == notice.key && command.revision != notice.revision {
             finish(id, error: "Notification changed")
         }
@@ -35,8 +37,7 @@ final class NotificationCommandController: ObservableObject {
         }
     }
     func notificationRemoved(_ key: String) {
-        if feedback[key] == error { error = nil }
-        feedback.removeValue(forKey: key)
+        clearFeedback(key)
         if replyTarget?.key == key { replyTarget = nil; replyDraft = "" }
         for (id, command) in Array(pending) where command.key == key { finish(id) }
     }
@@ -63,9 +64,10 @@ final class NotificationCommandController: ObservableObject {
         }
         sendCommand("action", notice: notice, action: action.id, text: text, capabilityRevision: action.revision)
     }
-    func seek(_ notice: Notice, action: NoticeAction, position: Int64) {
-        guard notice.isMedia, action.enabled, action.mediaControl == "seek", position >= 0 else { return }
-        sendCommand("action", notice: notice, action: action.id, capabilityRevision: action.revision, position: position)
+    @discardableResult
+    func seek(_ notice: Notice, action: NoticeAction, position: Int64) -> Bool {
+        guard notice.isMedia, action.enabled, action.mediaControl == "seek", position >= 0 else { return false }
+        return sendCommand("action", notice: notice, action: action.id, capabilityRevision: action.revision, position: position)
     }
     func receiveResult(id: String, status: String) -> Removal? {
         guard let command = pending[id] else { return nil }
@@ -81,13 +83,14 @@ final class NotificationCommandController: ObservableObject {
         }
         return nil
     }
+    @discardableResult
     private func sendCommand(_ kind: String, notice: Notice, action: String? = nil, text: String? = nil,
-                             capabilityRevision: String? = nil, position: Int64? = nil) {
-        guard connected(), !pendingKeys.contains(notice.key), let latest = current(notice.key) else { return }
+                             capabilityRevision: String? = nil, position: Int64? = nil) -> Bool {
+        guard connected(), !pendingKeys.contains(notice.key), let latest = current(notice.key) else { return false }
         if let capabilityRevision {
             guard kind == "action", notice.isMedia, latest.isMedia,
-                  latest.actions?.contains(where: { $0.id == action && $0.revision == capabilityRevision && $0.enabled }) == true else { return }
-        } else if latest.revision != notice.revision { return }
+                  latest.actions?.contains(where: { $0.id == action && $0.revision == capabilityRevision && $0.enabled }) == true else { return false }
+        } else if latest.revision != notice.revision { return false }
         let id = UUID().uuidString
         var message = Message(kind)
         message.key = notice.key; message.revision = capabilityRevision ?? notice.revision; message.command = id
@@ -96,14 +99,27 @@ final class NotificationCommandController: ObservableObject {
         let timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
             self?.finish(id, error: kind == "dismiss" ? "Dismissal not confirmed" : "Phone action not confirmed")
         }
-        pending[id] = Pending(key: notice.key, revision: notice.revision, kind: kind, timer: timer)
-        pendingKeys.insert(notice.key); feedback.removeValue(forKey: notice.key); error = nil
+        let feedbackTimer = Timer.scheduledTimer(withTimeInterval: Self.feedbackDelay, repeats: false) { [weak self] _ in
+            guard let self, self.pending[id] != nil else { return }
+            self.busyKeys.insert(notice.key)
+        }
+        pending[id] = Pending(key: notice.key, revision: notice.revision, kind: kind, timer: timer, feedbackTimer: feedbackTimer)
+        pendingKeys.insert(notice.key); clearFeedback(notice.key)
+        if error != nil { error = nil }
         send(message)
+        return true
     }
     private func finish(_ id: String, error: String? = nil) {
         guard let command = pending.removeValue(forKey: id) else { return }
-        command.timer.invalidate(); pendingKeys.remove(command.key)
+        command.timer.invalidate(); command.feedbackTimer.invalidate()
+        pendingKeys.remove(command.key)
+        if busyKeys.contains(command.key) { busyKeys.remove(command.key) }
         if let error { self.error = error; feedback[command.key] = error }
+    }
+    private func clearFeedback(_ key: String) {
+        guard let previous = feedback[key] else { return }
+        feedback.removeValue(forKey: key)
+        if error == previous { error = nil }
     }
     private func failureMessage(_ status: String, kind: String) -> String {
         switch status {

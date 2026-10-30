@@ -75,16 +75,33 @@ struct NotificationChevron: View {
     let expanded: Bool
     let subject: String
     let action: () -> Void
+    var busy = false
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.down")
                 .rotationEffect(.degrees(expanded ? 180 : 0))
                 .font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                 .frame(width: 24, height: 24).contentShape(Rectangle())
+                .opacity(busy ? 0 : 1)
+                .overlay { NotificationBusyIndicator(visible: busy) }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(expanded ? "Collapse" : "Expand") \(subject)")
         .accessibilityValue(expanded ? "Expanded" : "Collapsed")
         .help(expanded ? "Collapse" : "Expand")
+    }
+}
+
+/// Fixed space and no transition: busy feedback never moves surrounding content.
+struct NotificationBusyIndicator: View {
+    let visible: Bool
+    var label = "Waiting for phone"
+    var body: some View {
+        ProgressView().controlSize(.mini)
+            .frame(width: 16, height: 16)
+            .opacity(visible ? 1 : 0)
+            .allowsHitTesting(false)
+            .accessibilityLabel(label).accessibilityHidden(!visible)
+            .transaction { $0.animation = nil }
     }
 }

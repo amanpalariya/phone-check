@@ -55,7 +55,6 @@ struct NotificationList: View {
         .notificationMotion(value: expansion.rows)
         .notificationMotion(value: commands.replyTarget)
         .notificationMotion(value: commands.feedback)
-        .notificationMotion(value: commands.pendingKeys)
         .notificationMotion(value: commands.replyDraft)
         .onChange(of: activeNotices ?? notices) { _, _ in
             expansion.retain(notices: activeNotices ?? notices)
@@ -144,8 +143,8 @@ private struct NotificationGroup: View {
     @Binding var expanded: Bool
     private var latest: Notice { children[0] }
     private var canDismiss: Bool {
-        if let summary, summary.dismissible { return !commands.pendingKeys.contains(summary.key) }
-        return children.contains { $0.dismissible && !commands.pendingKeys.contains($0.key) }
+        if let summary, summary.dismissible { return !commands.busyKeys.contains(summary.key) }
+        return children.contains { $0.dismissible && !commands.busyKeys.contains($0.key) }
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -211,7 +210,7 @@ private struct NotificationGroup: View {
 struct NotificationGroupActions: View {
     let notice: Notice
     @ObservedObject var commands: NotificationCommandController
-    private var pending: Bool { commands.pendingKeys.contains(notice.key) }
+    private var pending: Bool { commands.busyKeys.contains(notice.key) }
     @ViewBuilder var body: some View {
         ForEach(notice.actions ?? []) { action in
             Button(role: action.destructive ? .destructive : nil) {

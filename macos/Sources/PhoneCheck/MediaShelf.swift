@@ -26,11 +26,14 @@ struct MediaShelf: View {
                             .accessibilityLabel("Next media session")
                     }.buttonStyle(.borderless).tint(.primary)
                 }
-                MediaPlaybackView(notice: notice, commands: commands)
+                MediaPlaybackView(notice: notice, commands: commands).id(notice.key)
             }
             .padding(.vertical, 12)
+            .onAppear {
+                if !notices.contains(where: { $0.key == selection.key }) { selection.key = notice.key }
+            }
             .onChange(of: notices.map(\.key)) { _, keys in
-                if let key = selection.key, !keys.contains(key) { selection.key = nil }
+                if let key = selection.key, !keys.contains(key) { selection.key = keys.first }
             }
         }
     }
@@ -40,25 +43,78 @@ struct MediaShelf: View {
     }
 }
 
-private final class MediaSeekPresentation: ObservableObject {
+final class MediaSeekPresentation: ObservableObject {
+    private struct Confirmation {
+        let position: Double
+        let sentAt: Date
+        let previousUpdate: Int64
+    }
+    private var confirmation: Confirmation?
+    private var confirmationTimer: Timer?
+    @Published private(set) var failure: String?
     @Published var draft: Double?
     @Published var editing = false
+    @Published var buffering = false
     private var timer: Timer?
     func cancel() { timer?.invalidate(); timer = nil }
     func schedule(_ action: @escaping () -> Void) {
         cancel()
         timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { _ in action() }
     }
-    deinit { timer?.invalidate() }
+    func updateDraft(_ position: Double) {
+        clearConfirmation()
+        failure = nil
+        draft = position
+    }
+    func beginSeek(_ position: Double, media: NoticeMedia, at date: Date = .now) {
+        clearConfirmation()
+        failure = nil
+        draft = position
+        confirmation = Confirmation(position: position, sentAt: date, previousUpdate: media.updatedAt)
+        confirmationTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
+            self?.reset()
+            self?.failure = "Seek not confirmed"
+        }
+    }
+    func position(media: NoticeMedia, at date: Date) -> Double {
+        guard let draft else { return media.position(at: date) }
+        guard !editing, let confirmation else { return draft }
+        let elapsed = max(0, date.timeIntervalSince(confirmation.sentAt) * 1000)
+        let position = confirmation.position + (media.playing ? elapsed * media.speed : 0)
+        return min(Double(media.duration), max(0, position))
+    }
+    func reconcile(_ media: NoticeMedia, at date: Date = .now) {
+        guard !editing, let confirmation, media.updatedAt > confirmation.previousUpdate else { return }
+        // Ignore old/in-flight phone positions until playback actually reaches the seek target.
+        if abs(media.position(at: date) - position(media: media, at: date)) <= 1500 {
+            clearConfirmation()
+            draft = nil
+        }
+    }
+    func reset() {
+        cancel(); clearConfirmation()
+        draft = nil; editing = false; failure = nil
+    }
+    private func clearConfirmation() {
+        confirmationTimer?.invalidate(); confirmationTimer = nil; confirmation = nil
+    }
+    deinit { timer?.invalidate(); confirmationTimer?.invalidate() }
 }
 
 struct MediaPlaybackView: View {
     let notice: Notice
     @ObservedObject var commands: NotificationCommandController
     @StateObject private var seeking = MediaSeekPresentation()
-    private var pending: Bool { commands.pendingKeys.contains(notice.key) }
+    private var pending: Bool { commands.busyKeys.contains(notice.key) }
     private var seekAction: NoticeAction? { notice.actions?.first { $0.mediaControl == "seek" && $0.enabled } }
     private var actions: [NoticeAction] { (notice.actions ?? []).filter { $0.mediaControl != "seek" } }
+    private struct Control: Identifiable {
+        let action: NoticeAction
+        // Keep the primary button mounted when its capability changes Play ↔ Pause.
+        var id: String {
+            action.mediaControl == "play" || action.mediaControl == "pause" ? "playback" : action.id
+        }
+    }
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 12) {
@@ -79,18 +135,17 @@ struct MediaPlaybackView: View {
                         Text(notice.app).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                if pending || notice.media?.buffering == true {
-                    ProgressView().controlSize(.small).accessibilityLabel(pending ? "Waiting for phone" : "Buffering")
-                }
+                NotificationBusyIndicator(visible: pending || seeking.buffering,
+                                          label: pending ? "Waiting for phone" : "Buffering")
             }
             if let media = notice.media, media.duration > 0 {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    let position = seeking.draft ?? media.position(at: context.date)
+                    let position = seeking.position(media: media, at: context.date)
                     VStack(spacing: 3) {
                         if let seekAction {
                             Slider(value: Binding(get: { min(Double(media.duration), max(0, position)) },
                                                   set: { value in
-                                seeking.draft = value
+                                seeking.updateDraft(value)
                                 if !seeking.editing { seeking.schedule { commitSeek(seekAction, position: value) } }
                             }), in: 0...Double(media.duration),
                                    onEditingChanged: { editing in
@@ -115,7 +170,8 @@ struct MediaPlaybackView: View {
             if !actions.isEmpty {
                 HStack(spacing: 8) {
                     Spacer(minLength: 0)
-                    ForEach(Array(actions.prefix(5))) { action in
+                    ForEach(actions.prefix(5).map { Control(action: $0) }) { control in
+                        let action = control.action
                         Button { perform(action) } label: {
                             actionLabel(action)
                                 .frame(width: 28, height: 28)
@@ -139,12 +195,26 @@ struct MediaPlaybackView: View {
                 }
             }
             NotificationReplyComposer(notice: notice, commands: commands)
-            if let feedback = commands.feedback[notice.key] {
+            if let feedback = commands.feedback[notice.key] ?? seeking.failure {
                 Text(feedback).font(.caption).foregroundStyle(.secondary)
             }
         }
         .accessibilityElement(children: .contain)
-        .onChange(of: seekAction?.id) { _, _ in seeking.cancel(); seeking.draft = nil; seeking.editing = false }
+        // Playback updates are direct state changes, not notification insertion transitions.
+        .transaction { $0.animation = nil }
+        .task(id: notice.media?.buffering == true) {
+            seeking.buffering = false
+            guard notice.media?.buffering == true else { return }
+            do {
+                try await Task.sleep(for: .seconds(NotificationCommandController.feedbackDelay))
+                try Task.checkCancellation()
+                seeking.buffering = true
+            } catch { }
+        }
+        .onChange(of: seekAction?.id) { _, _ in seeking.reset() }
+        .onChange(of: notice.media) { _, media in if let media { seeking.reconcile(media) } }
+        .onChange(of: commands.feedback[notice.key]) { _, feedback in if feedback != nil { seeking.reset() } }
+        .onDisappear { seeking.reset() }
         .contextMenu {
             if notice.openable == true { Button("Open on phone") { commands.open(notice) }.disabled(pending) }
             if notice.dismissible { Button("Dismiss on phone") { commands.dismiss(notice) }.disabled(pending) }
@@ -173,8 +243,11 @@ struct MediaPlaybackView: View {
     }
     private func commitSeek(_ action: NoticeAction, position: Double) {
         seeking.cancel()
-        commands.seek(notice, action: action, position: Int64(position.rounded()))
-        seeking.draft = nil
+        guard let media = notice.media else { seeking.reset(); return }
+        let target = min(Double(media.duration), max(0, position))
+        if commands.seek(notice, action: action, position: Int64(target.rounded())) {
+            seeking.beginSeek(target, media: media)
+        } else { seeking.reset() }
     }
     private func perform(_ action: NoticeAction) {
         if action.input { commands.beginReply(notice, action: action) }

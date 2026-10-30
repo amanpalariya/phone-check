@@ -27,7 +27,7 @@ struct RichNoticeRow: View {
         self.summary = summary
         _presentation = StateObject(wrappedValue: RowPresentation(expanded: initiallyExpanded))
     }
-    private var pending: Bool { commands.pendingKeys.contains(notice.key) }
+    private var pending: Bool { commands.busyKeys.contains(notice.key) }
     private var actions: [NoticeAction] { notice.actions ?? [] }
     private var immediateControls: Bool { notice.kind == "media" || notice.kind == "call" }
     private var replying: Bool { commands.replyTarget?.key == notice.key }
@@ -54,7 +54,6 @@ struct RichNoticeRow: View {
                 }
             } else {
                 NotificationPreview(notice: notice) {
-                    if pending { ProgressView().controlSize(.mini).accessibilityLabel("Waiting for phone") }
                     expansionButton
                 }
             }
@@ -132,9 +131,6 @@ struct RichNoticeRow: View {
             NoticeAppIcon(notice: notice, size: 18)
             Text(notice.app).font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
             Spacer(minLength: 4)
-            if pending {
-                ProgressView().controlSize(.mini).accessibilityLabel("Waiting for phone")
-            }
             NotificationTime(postedAt: notice.postedAt)
             expansionButton
         }
@@ -171,9 +167,9 @@ struct RichNoticeRow: View {
         }
     }
     private var expansionButton: some View {
-        NotificationChevron(expanded: expanded, subject: "notification") {
+        NotificationChevron(expanded: expanded, subject: "notification", action: {
             expanded.toggle()
-        }
+        }, busy: pending)
     }
     private var actionButtons: some View {
         ForEach(actions) { action in
