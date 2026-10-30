@@ -375,20 +375,12 @@ final class Companion: NSObject, ObservableObject {
     private func receive(_ message: Message) {
         switch message.type {
         case "device_info":
-            // Only accept device identity inside the authenticated encrypted session.
-            guard let name = message.deviceName?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !name.isEmpty, name.count <= 128,
-                  name.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
-                  var saved = credentials, saved.peer != nil, saved.phoneName != name else { return }
-            saved.phoneName = name
-            do {
-                try saved.save(); credentials = saved; phoneName = name
-            } catch { self.error = "Could not save phone name" }
+            receiveDeviceInfo(message)
         case "snapshot_begin":
             guard !state.synchronized, staged == nil else { active?.close(); return }
             staged = []; stagedBytes = 0
         case "snapshot_items":
-            guard staged != nil, let batch = message.items, batch.allSatisfy(validNotice),
+            guard staged != nil, let batch = message.items, batch.allSatisfy(\.isValid),
                   staged!.count + batch.count <= 1000 else { active?.close(); return }
             stagedBytes += (try? Wire.json(message).count) ?? Wire.maxFrame
             guard stagedBytes <= 32 * 1024 * 1024 else { active?.close(); return }
@@ -398,7 +390,7 @@ final class Companion: NSObject, ObservableObject {
             completeSnapshot(items)
         case "snapshot":
             guard !state.synchronized, staged == nil, let items = message.items, items.count <= 1000,
-                  items.allSatisfy(validNotice) else { active?.close(); return }
+                  items.allSatisfy(\.isValid) else { active?.close(); return }
             completeSnapshot(items)
         case "device_status":
             guard let battery = message.battery, battery.isValid else { active?.close(); return }
@@ -406,40 +398,67 @@ final class Companion: NSObject, ObservableObject {
         case "attention":
             updateAttention(message)
         case "upsert":
-            updateAttention(message)
-            guard state.synchronized, let item = message.item, validNotice(item),
-                  state.items.count < 1000 || state.items[item.key] != nil else { active?.close(); return }
-            let previous = state.items[item.key]
-            if state.upsert(item) {
-                let contentChanged = previous?.revision != item.revision
-                if contentChanged { commands.notificationChanged(item) }
-                unread.receive(item, previous: previous, checking: notificationsVisible)
-                publish()
-                if contentChanged && AlertPolicy.shouldPreview(item, previous: previous) && AlertPolicy.shouldAlert(
-                    phoneInUse: phoneAttention.inUse ?? message.phoneInUse, sentAt: message.sentAt,
-                    now: Int64(Date().timeIntervalSince1970 * 1000)) {
-                    previewEvents.send(item)
-                } else if contentChanged {
-                    if phoneAttention.inUse == true { PreviewDiagnostics.record("Suppressed: phone in use") }
-                    else if item.audible != true { PreviewDiagnostics.record("Suppressed: silent or unknown sound metadata") }
-                    else if item.onlyAlertOnce == true && previous != nil { PreviewDiagnostics.record("Suppressed: only-alert-once update") }
-                    else { PreviewDiagnostics.record("Suppressed: summary, media, or stale event") }
-                }
-            }
+            receiveUpsert(message)
         case "remove":
             guard state.synchronized, let key = message.key else { active?.close(); return }
             _ = state.remove(key); removeAlert(key); commands.notificationRemoved(key)
             publish()
         case "result":
-            guard let id = message.command, let status = message.status else { return }
-            if let removal = commands.receiveResult(id: id, status: status) {
-                if state.remove(removal.key, revision: removal.revision) { removeAlert(removal.key) }
-                publish()
-            }
+            receiveResult(message)
         case "pong": break
         default: active?.close()
         }
     }
+    private func receiveDeviceInfo(_ message: Message) {
+        // Only accept device identity inside the authenticated encrypted session.
+        guard let name = message.deviceName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty, name.count <= 128,
+              name.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }),
+              var saved = credentials, saved.peer != nil, saved.phoneName != name else { return }
+        saved.phoneName = name
+        do {
+            try saved.save(); credentials = saved; phoneName = name
+        } catch { self.error = "Could not save phone name" }
+    }
+
+    private func receiveUpsert(_ message: Message) {
+        updateAttention(message)
+        guard state.synchronized, let item = message.item, item.isValid,
+              state.items.count < 1000 || state.items[item.key] != nil else { active?.close(); return }
+        let previous = state.items[item.key]
+        guard state.upsert(item) else { return }
+        let contentChanged = previous?.revision != item.revision
+        if contentChanged { commands.notificationChanged(item) }
+        unread.receive(item, previous: previous, checking: notificationsVisible)
+        publish()
+        if contentChanged { previewIfAllowed(item, previous: previous, message: message) }
+    }
+
+    private func previewIfAllowed(_ item: Notice, previous: Notice?, message: Message) {
+        let shouldPreview = AlertPolicy.shouldPreview(item, previous: previous) && AlertPolicy.shouldAlert(
+            phoneInUse: phoneAttention.inUse ?? message.phoneInUse, sentAt: message.sentAt,
+            now: Int64(Date().timeIntervalSince1970 * 1000))
+        if shouldPreview {
+            previewEvents.send(item)
+        } else if phoneAttention.inUse == true {
+            PreviewDiagnostics.record("Suppressed: phone in use")
+        } else if item.audible != true {
+            PreviewDiagnostics.record("Suppressed: silent or unknown sound metadata")
+        } else if item.onlyAlertOnce == true && previous != nil {
+            PreviewDiagnostics.record("Suppressed: only-alert-once update")
+        } else {
+            PreviewDiagnostics.record("Suppressed: summary, media, or stale event")
+        }
+    }
+
+    private func receiveResult(_ message: Message) {
+        guard let id = message.command, let status = message.status else { return }
+        if let removal = commands.receiveResult(id: id, status: status) {
+            if state.remove(removal.key, revision: removal.revision) { removeAlert(removal.key) }
+            publish()
+        }
+    }
+
     private func updateAttention(_ message: Message) {
         phoneAttention.update(inUse: message.phoneInUse, sentAt: message.sentAt,
                               now: Int64(Date().timeIntervalSince1970 * 1000))
@@ -463,26 +482,6 @@ final class Companion: NSObject, ObservableObject {
         advertisedAddresses = hosts
         var endpoint = Message("local_endpoint"); endpoint.hosts = hosts; endpoint.port = Int(localPort)
         active?.send(endpoint)
-    }
-    private func validNotice(_ item: Notice) -> Bool {
-        guard !item.key.isEmpty, item.key.utf8.count <= 4096, item.app.count <= 256, item.title.count <= 2048,
-              item.body.count <= 8192, item.revision.count == 64,
-              (item.image?.count ?? 0) <= 44000, (item.appIcon?.count ?? 0) <= 16400, (item.groupKey?.count ?? 0) <= 4096,
-              (item.actions?.count ?? 0) <= (item.isMedia ? 12 : 6), (item.lines?.count ?? 0) <= 20,
-              (item.messages?.count ?? 0) <= 12 else { return false }
-        if let lines = item.lines, !lines.allSatisfy({ $0.count <= 1024 }) { return false }
-        if let messages = item.messages, !messages.allSatisfy({ $0.sender.count <= 256 && $0.text.count <= 2048 }) { return false }
-        if let progress = item.progress, progress.max < 0 || progress.value < 0 || progress.value > max(1, progress.max) { return false }
-        if let media = item.media {
-            guard item.isMedia, media.position >= 0, media.duration >= 0, media.updatedAt >= 0,
-                  media.speed.isFinite, abs(media.speed) <= 16 else { return false }
-        }
-        if let actions = item.actions {
-            guard Set(actions.map(\.id)).count == actions.count else { return false }
-            return actions.allSatisfy { !$0.id.isEmpty && $0.id.count <= 64 && $0.title.count <= 128 && ($0.revision == nil || $0.revision?.count == 64) && ($0.icon?.count ?? 0) <= 16400 && ($0.mediaControl?.count ?? 0) <= 32 &&
-                $0.choices.count <= 8 && $0.choices.allSatisfy { $0.count <= 256 } }
-        }
-        return true
     }
     private func publish() {
         notices = state.items.values.sorted {

@@ -13,6 +13,7 @@ swiftc -D DEBUG -parse-as-library -swift-version 5 -target "$ARCH-apple-macos14.
     "$ROOT"/macos/Sources/PhoneCheck/Cloud*.swift \
     "$ROOT/macos/Sources/PhoneCheck/BrowserGoogleLogin.swift" \
     "$ROOT/macos/Sources/PhoneCheck/NotificationAlerts.swift" \
+    "$ROOT/macos/Sources/PhoneCheck/PreviewDiagnostics.swift" \
     "$ROOT/macos/Sources/PhoneCheck/NotificationCommandController.swift" \
     "$ROOT/macos/Sources/PhoneCheck/Credentials.swift" \
     "$ROOT/macos/Sources/PhoneCheck/Transport.swift" \

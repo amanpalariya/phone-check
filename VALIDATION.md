@@ -520,3 +520,28 @@ Additional device checks:
 - Mac startup and General settings read the bundled icon explicitly rather than depending on stale LaunchServices artwork. Old backup app registrations were removed without deleting their bundles.
 - Passed packaged Mac debug build and signature verification, Android debug/release builds, and Android debug lint. Visually reviewed the icon crop with a circular adaptive mask and both native menu-bar variants in light/dark appearances at 1× and enlarged scale.
 - Installed the final development builds on the Mac and Samsung SM-S911B, preserving app data. Verified Mac launch/local connection and successful Android installation. Settings-window automation was unreliable, so a fresh on-screen Settings screenshot is not claimed; its bundled-icon path and the installed asset were verified separately.
+
+## Readability and repository hygiene — October 30, 2026
+
+- Separated Android transport construction from listener lifecycle, command parsing from
+  execution, and media dispatch from PendingIntent dispatch. Existing capability, freshness,
+  replay and confirmed-removal rules are retained.
+- Moved Mac wire bounds into `PhoneCheckCore/NotificationValidation.swift`; split companion
+  message handlers, preview policy application and pane setup into named functions.
+  Extracted preview diagnostics from UI code and fixed both integration harness source lists.
+- Shortened the README with an icon, connection diagram, requirements, build/install and
+  pairing steps; retained detailed development guidance in `docs/development.md`.
+- Pattern-scanned all 542 historical blobs across 44 reachable commits for private keys,
+  Google API keys/client IDs/refresh tokens, GitHub/AWS/Slack tokens, JWTs and literal
+  credential assignments. No likely credentials matched; Firebase client config files were
+  absent from tracked history. This is a pattern audit, not a guarantee against every secret.
+  Removed the live project identifier from current docs and expanded configuration/key
+  ignore rules. Existing ignored local configs were retained; Git history was not rewritten.
+- Passed: Android debug/release builds, 36 unit tests and debug lint; Mac debug/release
+  packaged builds, 14 core checks and 10 Firebase/device-state groups; Mac testbed/action/seek
+  checks and pane checks; simulated Mac lifecycle checks; emulator Mac host build;
+  documentation link and eight configuration/key ignore checks.
+- Full signed-out local socket integration was attempted but stopped before pairing:
+  its initial listener on port 47833 did not reach ready within eight seconds. The cause
+  was not established. The simulated lifecycle check passed separately. No physical-device
+  or full Android-emulator verification was performed for this refactor.

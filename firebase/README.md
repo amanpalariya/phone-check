@@ -52,7 +52,7 @@ Firebase reconnects, since control listeners are suspended during local operatio
 
 ## Project and client configuration
 
-The Phone Check project is `phone-check-fcd4f`. Its Realtime Database is in Singapore
+Use your own Firebase project. The current deployment uses Realtime Database in Singapore
 (`asia-southeast1`); Google is the enabled Firebase Authentication provider. Analytics and
 Gemini were not enabled. The support address is the project owner's approved Google address.
 
@@ -74,8 +74,9 @@ files before building. No service-account keys belong in either app or this repo
 
 The Mac uses system-browser Google OAuth authorization codes with PKCE, random state and
 nonce, and a temporary callback listener restricted to `127.0.0.1`. It exchanges the Google
-ID token using Firebase Auth REST and stores only the Firebase refresh token in the classic
-login Keychain. ID tokens remain in memory and refresh before expiry. No Apple-issued signing
+ID token using Firebase Auth REST. Release builds store the Firebase refresh token in the
+login Keychain; debug builds use owner-only local files (see the
+[development guide](../docs/development.md)). ID tokens remain in memory and refresh before expiry. No Apple-issued signing
 certificate or native Google/Firebase Apple SDK is required. macOS can request Keychain approval
 after ad hoc rebuilds. Android uses Firebase Auth, BoM 34.19.0 and Google ID 1.1.1, compatible
 with the current built-in Kotlin compiler; newer versions checked require newer Kotlin metadata.
@@ -169,7 +170,7 @@ npm test --prefix firebase
 
 The tests cover unauthenticated/cross-account denial, bounded invites, single peer binding,
 unknown/oversized data, expired sessions, atomic rotation and cleanup. Deploy the exact tested
-file using `firebase deploy --only database --project phone-check-fcd4f --config firebase/firebase.json`
+file using `firebase deploy --only database --project YOUR_PROJECT_ID --config firebase/firebase.json`
 from the repository root after authenticating the Firebase CLI, or publish the same JSON in
 the console. The tested rules were published to the live database on October 29, 2026 with user approval.
 

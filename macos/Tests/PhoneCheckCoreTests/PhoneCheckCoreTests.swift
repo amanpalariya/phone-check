@@ -18,9 +18,58 @@ struct PhoneCheckCoreTests {
         try tests.testBatteryMessage()
         try tests.testMediaTimelineAndNotificationSeparation()
         try tests.testUncheckedNotificationsAndPreviewPolicy()
-        print("13 core checks passed")
+        try tests.testNotificationValidationBounds()
+        print("14 core checks passed")
         try FirebaseChecks.run()
     }
+    func testNotificationValidationBounds() throws {
+        let baseline = notice(String(repeating: "a", count: 64))
+        try check(baseline.isValid)
+        var item = baseline
+        item.key = String(repeating: "é", count: 2048)
+        try check(item.isValid) // Keys are bounded by UTF-8 bytes, not characters.
+        item.key += "é"
+        try check(!item.isValid)
+        item = baseline
+        item.body = String(repeating: "x", count: 8192)
+        try check(item.isValid)
+        item.body += "x"
+        try check(!item.isValid)
+        item = baseline
+        item.lines = Array(repeating: "line", count: 20)
+        try check(item.isValid)
+        item.lines?.append("line")
+        try check(!item.isValid)
+        item = baseline
+        item.progress = try JSONDecoder().decode(NoticeProgress.self, from: Data(#"{"value":1,"max":0,"indeterminate":true}"#.utf8))
+        try check(item.isValid) // Preserve indeterminate progress from existing peers.
+        item.progress?.value = 2
+        try check(!item.isValid)
+        item = baseline
+        item.media = try JSONDecoder().decode(NoticeMedia.self, from: Data(#"{"playing":true,"buffering":false,"position":0,"duration":100,"speed":1,"updatedAt":1}"#.utf8))
+        try check(!item.isValid)
+        item.kind = "media"
+        try check(item.isValid)
+        item.media?.speed = .infinity
+        try check(!item.isValid)
+        item = baseline
+        let action = try JSONDecoder().decode(NoticeAction.self, from: Data(#"{"id":"action","title":"Reply","input":true,"freeform":true,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}"#.utf8))
+        item.actions = [action, action]
+        try check(!item.isValid) // Capabilities must be unambiguous.
+        item.actions = (0..<6).map { index in
+            var copy = action
+            copy.id = String(index)
+            return copy
+        }
+        try check(item.isValid)
+        var extra = action
+        extra.id = "extra"
+        item.actions?.append(extra)
+        try check(!item.isValid)
+        item.kind = "media"
+        try check(item.isValid)
+    }
+
     func testUncheckedNotificationsAndPreviewPolicy() throws {
         var unread = UncheckedNotifications()
         var first = notice(key: "first")

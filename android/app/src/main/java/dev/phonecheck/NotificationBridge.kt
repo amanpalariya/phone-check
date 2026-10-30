@@ -61,30 +61,10 @@ class NotificationBridge : NotificationListenerService() {
     private var runningLocalAccess = false
     private val callbacks = TransportCallbacks(::transportConnected, ::transportMessage, ::transportDisconnected, ::cloudPairingRevoked)
     private var createTransport: (Pairing, TransportCallbacks) -> NotificationTransport = { pairing, callbacks ->
-        if (pairing.isLocalOnly) {
-            LanTransport(pairing, main, mayConnect = { localAllowed() },
-                onConnecting = { BridgeState.status = "Connecting…" },
-                onConnected = callbacks.onConnected, onMessage = callbacks.onMessage,
-                onDisconnected = callbacks.onDisconnected)
-        } else AutomaticTransport(callbacks,
-            cloudFactory = { CloudTransport(pairing, main, it) },
-            localFactory = { host, port, events ->
-                LanTransport(pairing.copy(host = host, port = port), main,
-                    mayConnect = { localAllowed() }, onConnecting = {},
-                    onConnected = events.onConnected, onMessage = events.onMessage,
-                    onDisconnected = events.onDisconnected)
-            }, mayUseLocal = { localAllowed() },
-            localMode = { local ->
-                if (local) {
-                    CloudAccount.database.goOffline()
-                    CloudAccount.database.purgeOutstandingWrites()
-                } else CloudAccount.database.goOnline()
-            },
-            schedule = { delay, action ->
-                val task = Runnable { action() }; main.postDelayed(task, delay)
-                val cancel: () -> Unit = { main.removeCallbacks(task) }; cancel
-            })
+        createBridgeTransport(pairing, callbacks, main, mayUseLocal = { localAllowed() },
+            onConnecting = { BridgeState.status = "Connecting…" })
     }
+
     private fun cloudPairingRevoked() {
         stopLink()
         runCatching { PairingStore(this).clear() }.onSuccess {

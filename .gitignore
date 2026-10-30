@@ -18,12 +18,17 @@ android/local.properties
 *.p8
 *.mobileprovision
 *.provisionprofile
+*.key
+*.pem
 # Project-specific Firebase client configuration (supplied locally or by CI)
 google-services.json
 GoogleService-Info.plist
 GoogleOAuthClient.json
 client_secret_*.json
 *-firebase-adminsdk-*.json
+service-account*.json
+serviceAccount*.json
+.firebaserc
 node_modules/
 firebase/*-debug.log
 .firebase/

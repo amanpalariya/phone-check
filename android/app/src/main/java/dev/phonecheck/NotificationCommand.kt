@@ -1,5 +1,7 @@
 package dev.phonecheck
 
+import org.json.JSONObject
+
 internal enum class CommandKind(val wireName: String) { DISMISS("dismiss"), ACTION("action"), OPEN("open") }
 
 internal data class NotificationCommand(
@@ -15,6 +17,25 @@ internal data class NotificationCommand(
 ) {
     fun isFresh(now: Long): Boolean = sentAt in (now - 10000)..(now + 1000) &&
         expiresAt in (sentAt + 1)..(sentAt + 10000) && now <= expiresAt
+
+    companion object {
+        fun parse(message: JSONObject): NotificationCommand? {
+            val kind = CommandKind.entries.firstOrNull { it.wireName == message.optString("type") } ?: return null
+            val id = message.optString("command")
+            val key = message.optString("key")
+            val revision = message.optString("revision")
+            val action = if (kind == CommandKind.ACTION) message.optString("action") else null
+            val position = if (message.has("position")) {
+                val value = message.opt("position")
+                if (value !is Number || !value.toString().matches(Regex("[0-9]{1,19}"))) return null
+                value.toString().toLongOrNull() ?: return null
+            } else null
+            val text = if (message.has("text")) message.optString("text") else null
+            if (id.length !in 1..64 || key.length !in 1..4096 || revision.length != 64 ||
+                (action != null && action.length !in 1..64) || (text?.length ?: 0) > 4000) return null
+            return NotificationCommand(id, key, revision, kind, action, text, message.optLong("sentAt"), message.optLong("expiresAt"), position)
+        }
+    }
 }
 
 /** A short-lived receipt ledger prevents retrying a side effect, including after a notice updates. */

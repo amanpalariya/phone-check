@@ -58,6 +58,13 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
             }
             button.imagePosition = .imageOnly
         }
+        observeState()
+        configureMainMenu()
+        observePreviews()
+        updateStatusItem()
+    }
+
+    private func observeState() {
         #if DEBUG
         let changes = Publishers.Merge(model.objectWillChange, testbed.objectWillChange).eraseToAnyPublisher()
         #else
@@ -80,6 +87,9 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
             .sink { [weak self] _ in self?.trackingMenu = true }.store(in: &subscriptions)
         NotificationCenter.default.publisher(for: NSMenu.didEndTrackingNotification)
             .sink { [weak self] _ in self?.trackingMenu = false }.store(in: &subscriptions)
+    }
+
+    private func configureMainMenu() {
         let menu = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu(title: "Phone Check")
@@ -103,6 +113,9 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         windowItem.submenu = windowMenu
         menu.addItem(windowItem)
         NSApp.mainMenu = menu
+    }
+
+    private func observePreviews() {
         model.previewEvents.sink { [weak self] notice in
             guard let self else { return }
             guard let notice else { toast.hide(); return }
@@ -134,7 +147,6 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         }.store(in: &subscriptions)
         testbed.$notices.sink { [weak self] in self?.testbedToast.reconcile($0) }.store(in: &subscriptions)
         #endif
-        updateStatusItem()
     }
 
     private func updateStatusItem() {

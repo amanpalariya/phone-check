@@ -1,7 +1,6 @@
 import AppKit
 import SwiftUI
 import Intents
-import OSLog
 import PhoneCheckCore
 
 private final class ToastStackPresentation: ObservableObject {
@@ -225,10 +224,4 @@ private struct ToastRowsHeight: PreferenceKey {
 private struct ToastHeight: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
-
-/// Diagnostic reasons only: never record notification content, app identity, or keys.
-enum PreviewDiagnostics {
-    private static let logger = Logger(subsystem: "dev.phonecheck.mac", category: "NotificationPreview")
-    static func record(_ reason: String) { logger.notice("\(reason, privacy: .public)") }
 }
