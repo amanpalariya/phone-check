@@ -3,6 +3,7 @@ import PhoneCheckCore
 
 private final class MediaSelection: ObservableObject {
     @Published var key: String?
+    @Published var movingForward = true
 }
 
 /// Playback belongs to the panel header, independently of notification search and grouping.
@@ -10,13 +11,17 @@ struct MediaShelf: View {
     let notices: [Notice]
     @ObservedObject var commands: NotificationCommandController
     @StateObject private var selection = MediaSelection()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var selected: Notice? { notices.first { $0.key == selection.key } ?? notices.first }
     var body: some View {
         if let notice = selected {
             VStack(spacing: 10) {
                 if notices.count > 1 {
                     HStack {
-                        Text(notice.app).font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            NoticeAppIcon(notice: notice, size: 16)
+                            Text(notice.app).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
                         Spacer()
                         Button { step(-1) } label: { Image(systemName: "chevron.left") }
                             .accessibilityLabel("Previous media session")
@@ -26,7 +31,16 @@ struct MediaShelf: View {
                             .accessibilityLabel("Next media session")
                     }.buttonStyle(.borderless).tint(.primary)
                 }
-                MediaPlaybackView(notice: notice, commands: commands).id(notice.key)
+                ZStack(alignment: .top) {
+                    // Keep session transitions outside the playback view's transaction,
+                    // which deliberately suppresses animation for live playback updates.
+                    VStack(spacing: 0) {
+                        MediaPlaybackView(notice: notice, commands: commands, showsAppIdentity: notices.count == 1)
+                    }
+                    .id(notice.key)
+                    .transition(sessionTransition)
+                }
+                .clipped()
             }
             .padding(.vertical, 12)
             .onAppear {
@@ -37,9 +51,19 @@ struct MediaShelf: View {
             }
         }
     }
+    private var sessionTransition: AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .asymmetric(
+            insertion: .move(edge: selection.movingForward ? .trailing : .leading).combined(with: .opacity),
+            removal: .move(edge: selection.movingForward ? .leading : .trailing).combined(with: .opacity)
+        )
+    }
     private func step(_ offset: Int) {
-        guard let selected, let index = notices.firstIndex(where: { $0.key == selected.key }), !notices.isEmpty else { return }
-        selection.key = notices[(index + offset + notices.count) % notices.count].key
+        guard let selected, let index = notices.firstIndex(where: { $0.key == selected.key }), notices.count > 1 else { return }
+        selection.movingForward = offset > 0
+        withAnimation(NotificationMotion.animation(reduceMotion: reduceMotion)) {
+            selection.key = notices[(index + offset + notices.count) % notices.count].key
+        }
     }
 }
 
@@ -104,6 +128,7 @@ final class MediaSeekPresentation: ObservableObject {
 struct MediaPlaybackView: View {
     let notice: Notice
     @ObservedObject var commands: NotificationCommandController
+    var showsAppIdentity = true
     @StateObject private var seeking = MediaSeekPresentation()
     private var pending: Bool { commands.busyKeys.contains(notice.key) }
     private var seekAction: NoticeAction? { notice.actions?.first { $0.mediaControl == "seek" && $0.enabled } }
@@ -130,9 +155,11 @@ struct MediaPlaybackView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(notice.title.isEmpty ? notice.app : notice.title).font(.body.weight(.semibold)).lineLimit(2)
                     if !notice.body.isEmpty { Text(notice.body).font(.subheadline).foregroundStyle(.secondary).lineLimit(1) }
-                    HStack(spacing: 4) {
-                        NoticeAppIcon(notice: notice, size: 12)
-                        Text(notice.app).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    if showsAppIdentity {
+                        HStack(spacing: 4) {
+                            NoticeAppIcon(notice: notice, size: 12)
+                            Text(notice.app).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        }
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading)
                 NotificationBusyIndicator(visible: pending || seeking.buffering,

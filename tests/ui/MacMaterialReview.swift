@@ -412,7 +412,15 @@ private struct MediaReview: View {
             CompanionView(model: model).environment(\.colorScheme, .light)
             CompanionView(model: model).environment(\.colorScheme, .dark)
         }.padding(16).onAppear {
-            model.showPreview(NotificationFixtures.make(.media) + NotificationFixtures.make(.text), battery: BatteryStatus(percentage: 73, charging: false))
+            let music = NotificationFixtures.make(.media)[0]
+            var podcast = music
+            podcast.key = "test-podcast"
+            podcast.app = "Podcasts"
+            podcast.appIcon = nil
+            podcast.title = "A little curiosity"
+            podcast.body = "The weekly conversation"
+            podcast.image = nil
+            model.showPreview([music, podcast] + NotificationFixtures.make(.text), battery: BatteryStatus(percentage: 73, charging: false))
         }
     }
 }
