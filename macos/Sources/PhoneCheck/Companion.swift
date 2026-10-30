@@ -96,10 +96,10 @@ final class Companion: NSObject, ObservableObject {
         pairing = true
         pairingExpiresAt = Date().addingTimeInterval(299)
     }
-    func showPreview(_ items: [Notice], battery: BatteryStatus? = nil) {
+    func showPreview(_ items: [Notice], battery: BatteryStatus? = nil, route: ConnectionRoute = .local) {
         self.battery = battery
         notices = items; paired = true; connected = true; listening = true
-        alertsAllowed = true; status = "Connected"
+        alertsAllowed = true; status = "Connected"; connectionRoute = route
     }
     #endif
     var code: String {
@@ -502,6 +502,13 @@ final class Companion: NSObject, ObservableObject {
         center.removePendingNotificationRequests(withIdentifiers: [key])
     }
     func refreshAuthorization() {
+        #if PHONECHECK_VISUAL_TEST
+        // Product captures exercise the ready state without requesting OS access.
+        if CommandLine.arguments.contains("--product-capture") {
+            alertsAllowed = true
+            return
+        }
+        #endif
         alertsAllowed = INFocusStatusCenter.default.authorizationStatus == .authorized
     }
     func allowAlerts() {

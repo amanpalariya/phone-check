@@ -82,3 +82,11 @@ Mac debug credentials use owner-only local files; release uses Keychain. Android
 | [`protocol/`](protocol/) · [`firebase/`](firebase/) | Wire format, sync, database rules and cloud setup |
 
 [Development & release guide](docs/development.md) · [Emulator suite](tests/emulator/README.md) · [Verification record](VALIDATION.md)
+
+## Product website
+
+The standalone product page, native app captures, and editable demo video live in
+[`website/`](website/README.md). Build with `npm run build --prefix website`; host
+`website/dist/` on a static host. The [Pages workflow](.github/workflows/pages.yml)
+publishes website changes on `main` after GitHub Pages is enabled with the
+**GitHub Actions** source. See the website README for the one-time setup.

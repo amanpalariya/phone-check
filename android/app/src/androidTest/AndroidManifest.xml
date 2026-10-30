@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Asset capture only; production app visibility is unchanged. -->
+    <queries>
+        <package android:name="com.google.android.gm" />
+        <package android:name="com.google.android.apps.messaging" />
+        <package android:name="com.google.android.apps.youtube.music" />
+    </queries>
+</manifest>

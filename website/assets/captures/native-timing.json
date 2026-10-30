@@ -1,0 +1,61 @@
+{
+  "firstFrameUnixMs": 1793381977442,
+  "marks": [
+    {
+      "name": "connected",
+      "unixMs": 1793381981579
+    },
+    {
+      "name": "arrival",
+      "unixMs": 1793381989259
+    },
+    {
+      "name": "pause",
+      "unixMs": 1793381997743
+    },
+    {
+      "name": "reply_scene",
+      "unixMs": 1793382004654
+    },
+    {
+      "name": "expand",
+      "unixMs": 1793382008837
+    },
+    {
+      "name": "reply_open",
+      "unixMs": 1793382011976
+    },
+    {
+      "name": "reply_type",
+      "unixMs": 1793382015336
+    },
+    {
+      "name": "reply_text",
+      "unixMs": 1793382020663
+    },
+    {
+      "name": "reply_send",
+      "unixMs": 1793382028051
+    },
+    {
+      "name": "search",
+      "unixMs": 1793382036636
+    },
+    {
+      "name": "search_clear",
+      "unixMs": 1793382044054
+    },
+    {
+      "name": "collapse",
+      "unixMs": 1793382048381
+    },
+    {
+      "name": "dismiss",
+      "unixMs": 1793382054550
+    },
+    {
+      "name": "cloud",
+      "unixMs": 1793382062608
+    }
+  ]
+}

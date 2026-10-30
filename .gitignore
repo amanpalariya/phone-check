@@ -33,3 +33,7 @@ node_modules/
 firebase/*-debug.log
 .firebase/
 __pycache__/
+
+# Website output
+website/dist/
+website/video/out/

@@ -45,6 +45,9 @@ struct CompanionView: View {
     var pointerOffset: CGFloat = 0
     var feedMaximumHeight: CGFloat = 480
     var contentHeightChanged: (CGFloat) -> Void = { _ in }
+    #if PHONECHECK_VISUAL_TEST
+    var captureCommands: NotificationCommandController? = nil
+    #endif
     @StateObject private var presentation = CompanionPresentation()
     var body: some View {
         VStack(spacing: 0) {
@@ -134,6 +137,9 @@ struct CompanionView: View {
     }
 
     private var displayedCommands: NotificationCommandController {
+        #if PHONECHECK_VISUAL_TEST
+        if let captureCommands { return captureCommands }
+        #endif
         #if DEBUG
         if showsSamples { return testbed.commands }
         #endif

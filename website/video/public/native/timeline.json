@@ -1,0 +1,74 @@
+[
+  {
+    "name": "pairing",
+    "sourceStart": 0,
+    "duration": 4.5,
+    "playbackRate": 1
+  },
+  {
+    "name": "arrival",
+    "sourceStart": 10.8,
+    "duration": 3,
+    "playbackRate": 1
+  },
+  {
+    "name": "music",
+    "sourceStart": 18.1,
+    "duration": 4,
+    "playbackRate": 1
+  },
+  {
+    "name": "reply-expand",
+    "sourceStart": 31,
+    "duration": 1.6,
+    "playbackRate": 1
+  },
+  {
+    "name": "reply-open",
+    "sourceStart": 34.2,
+    "duration": 1.1,
+    "playbackRate": 1
+  },
+  {
+    "name": "reply-type",
+    "sourceStart": 43,
+    "duration": 1.4,
+    "playbackRate": 1
+  },
+  {
+    "name": "reply-send",
+    "sourceStart": 50.3,
+    "duration": 1.4,
+    "playbackRate": 1
+  },
+  {
+    "name": "search",
+    "sourceStart": 58.7,
+    "duration": 3,
+    "playbackRate": 1
+  },
+  {
+    "name": "search-clear",
+    "sourceStart": 66.4,
+    "duration": 0.7,
+    "playbackRate": 1
+  },
+  {
+    "name": "collapse",
+    "sourceStart": 70.65,
+    "duration": 0.8,
+    "playbackRate": 1
+  },
+  {
+    "name": "dismiss",
+    "sourceStart": 77,
+    "duration": 2.8,
+    "playbackRate": 1
+  },
+  {
+    "name": "cloud",
+    "sourceStart": 84.1,
+    "duration": 4,
+    "playbackRate": 1
+  }
+]
