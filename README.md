@@ -1,10 +1,21 @@
-# Phone Check
+<p align="center">
+  <img src="assets/app-icon.png" width="96" height="96" alt="Phone Check app icon">
+</p>
 
-<img src="assets/app-icon.png" width="80" alt="Phone Check app icon">
+<h1 align="center">Phone Check</h1>
 
-Your Android notifications, in your Mac menu bar. Read rich previews, reply, use
-notification and media controls, and dismiss on your phone with confirmation.
-The header shows phone battery, charging, and Battery Saver.
+<p align="center">Your Android notifications, in your Mac menu bar.</p>
+
+<p align="center">
+  <a href="https://amanpalariya.github.io/phone-check/">Visit the website</a>
+</p>
+
+<p align="center">
+  <img src="website/public/assets/mac-notifications.jpg" width="640" alt="Phone Check on Mac showing an expanded Messages conversation with a Reply action and grouped Gmail notifications">
+</p>
+
+Read rich previews, reply, use notification and media controls, and dismiss on your
+phone with confirmation. See phone battery, charging, and Battery Saver at a glance.
 
 ```text
 Android phone  ←── encrypted pairing ──→  Mac menu bar
