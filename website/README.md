@@ -131,8 +131,8 @@ https://youtu.be/C_xWt42xAjg
 
 The page uses YouTube’s privacy-enhanced embed and IFrame API. It loops, starts
 muted, pauses offscreen or in a hidden tab, and respects reduced-motion preferences.
-YouTube’s standard controls are hidden (`controls=0`); accessible playback,
-sound, and fullscreen buttons sit below the video. A direct
+YouTube’s standard controls and keyboard shortcuts are enabled (`controls=1`);
+additional accessible playback, sound, and fullscreen buttons sit below the video. A direct
 watch link remains available below the embed. The original 1080p60 MP4 remains in
 `public/assets/phone-check-demo.mp4` as the source export.
 
