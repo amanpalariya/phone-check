@@ -454,3 +454,10 @@ Additional device checks:
   Added screen-off post/update/dismiss instrumentation coverage; it compiles but was not run.
   No Android device is attached. Physical screen-off/deep-idle behavior, real Mac sleep/wake,
   cloud/local handover and live icon appearance still require device verification.
+
+## Compact Android settings — October 30, 2026
+
+- General now contains the app icon/version and compact Google account/Mac rows. Removed separate Account/Devices pages; sign-out and unpair retain their confirmation dialogs. Notification access appears only while missing; paired devices also expose missing local-network access inline. Encryption copy and the development-only Advanced/testbed entry remain.
+- Uses Material 3 dynamic-color icon containers. At large text sizes, row actions move below their text so account details and permission explanations have room to wrap.
+- Passed debug/release APK builds, instrumentation compilation, and debug lint. The isolated API 37 emulator ran `SettingsUiTest` in light mode and dark mode with 150% font scaling: inline sign-in/permission callbacks, sign-out/unpair cancellation, hidden granted-permission prompts, and Advanced/back navigation. Screenshots use synthetic account/device state and are under `android/app/build/reports/settings/`.
+- UI checks ran on an isolated emulator. Subsequently installed the debug APK on the paired Samsung SM-S911B over wireless ADB with app data preserved; verified successful installation, launch, and the debuggable package flag. Real Google sign-in, permission-controller dialogs, and live notification transport were not newly tested.

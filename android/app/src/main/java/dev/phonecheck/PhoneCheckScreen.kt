@@ -97,10 +97,12 @@ internal fun PhoneCheckScreen(
             PhoneSettingsScreen(
                 page = settingsPage!!, signedIn = signedIn, signingIn = signingIn,
                 accountName = accountName, accountEmail = accountEmail,
-                paired = paired, access = access, listenerReady = listenerReady, status = status, error = error,
+                paired = paired, localOnly = localOnly, access = access, network = network, networkBlocked = networkBlocked,
+                listenerReady = listenerReady, status = status, error = error,
                 onBack = { settingsPage = if (settingsPage == PhoneSettingsPage.MAIN) null else PhoneSettingsPage.MAIN },
                 onNavigate = { settingsPage = it }, onSetup = { settingsPage = null },
                 onSignIn = onSignIn, onSignOut = onSignOut, onNotificationAccess = onNotificationAccess,
+                onNetworkAccess = onNetworkAccess,
                 onReconnect = onReconnect, onTestbed = onTestbed, onUnpair = { confirmUnpair = true }
             )
         } else Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
