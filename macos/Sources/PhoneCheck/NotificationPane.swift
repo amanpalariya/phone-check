@@ -108,19 +108,16 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private func updateStatusItem() {
         guard let button = statusItem.button else { return }
         var count = model.notificationCount
-        var symbol = "iphone"
         var status = model.status
         var showsCount = model.connected
         #if DEBUG
         if testbed.showsInPane {
             count = NotificationSection.count(testbed.notices)
-            symbol = "testtube.2"
             status = "Testbed"
             showsCount = true
         }
         #endif
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        button.image?.isTemplate = true
+        button.image = MenuBarIcon.image(hasNew: false)
         button.title = showsCount ? " \(count)" : ""
         button.setAccessibilityLabel("Phone Check, \(status), \(count) notifications")
         button.toolTip = "Phone Check"

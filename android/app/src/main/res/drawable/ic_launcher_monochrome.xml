@@ -1,7 +1,10 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Simplified panels and badge for system-tinted launcher icons. -->
+    <!-- Larger, centered panels and badge, matching the original full-color artwork. -->
+    <group android:pivotX="57.5" android:pivotY="51.5" android:scaleX="1.23" android:scaleY="1.23"
+        android:translateX="-3.5" android:translateY="2.5">
     <path android:fillColor="#FFFFFFFF" android:pathData="M40,29L55,29Q63,29 63,37L63,42L52,42Q43,42 43,51L43,73L40,73Q32,73 32,65L32,37Q32,29 40,29Z" />
     <path android:fillColor="#FFFFFFFF" android:pathData="M52,46L65,46A10,10 0,0 0,77 58L77,66Q77,74 69,74L52,74Q47,74 47,69L47,51Q47,46 52,46Z" />
     <path android:fillColor="#FFFFFFFF" android:pathData="M83,48A7,7 0,1 1,69 48A7,7 0,1 1,83 48Z" />
+    </group>
 </vector>

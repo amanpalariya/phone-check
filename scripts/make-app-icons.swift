@@ -4,11 +4,36 @@ import Foundation
 // Run from the repository root: swift scripts/make-app-icons.swift
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
 let source = root.appendingPathComponent("assets/app-icon.png")
-guard let artwork = NSImage(contentsOf: source) else {
+guard let sourceBitmap = NSBitmapImageRep(data: try Data(contentsOf: source)),
+      let sourceImage = sourceBitmap.cgImage else {
     fatalError("Cannot load assets/app-icon.png; run from the repository root")
 }
 
-func writePNG(to url: URL, size: Int, inset: CGFloat = 0) throws {
+// Normalize the transparent source margin before applying platform-specific padding.
+// Keep the master artwork unchanged, including its antialiased edges.
+// Sparse extraction speckles must not count as padding or shrink the actual tile.
+var columns = [Int](repeating: 0, count: sourceBitmap.pixelsWide)
+var rows = [Int](repeating: 0, count: sourceBitmap.pixelsHigh)
+for y in 0..<sourceBitmap.pixelsHigh {
+    for x in 0..<sourceBitmap.pixelsWide {
+        if (sourceBitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 {
+            columns[x] += 1; rows[y] += 1
+        }
+    }
+}
+let columnThreshold = max(2, sourceBitmap.pixelsHigh * 3 / 100)
+let rowThreshold = max(2, sourceBitmap.pixelsWide * 3 / 100)
+guard let left = columns.firstIndex(where: { $0 >= columnThreshold }),
+      let right = columns.lastIndex(where: { $0 >= columnThreshold }),
+      let top = rows.firstIndex(where: { $0 >= rowThreshold }),
+      let bottom = rows.lastIndex(where: { $0 >= rowThreshold }) else { fatalError("App artwork is empty") }
+let pixelBounds = CGRect(x: left, y: top, width: right - left + 1, height: bottom - top + 1)
+let crop = pixelBounds.insetBy(dx: -1, dy: -1).intersection(
+    CGRect(x: 0, y: 0, width: sourceBitmap.pixelsWide, height: sourceBitmap.pixelsHigh))
+guard let cropped = sourceImage.cropping(to: crop) else { fatalError("Cannot trim app artwork") }
+let artwork = NSImage(cgImage: cropped, size: NSSize(width: cropped.width, height: cropped.height))
+
+func writePNG(to url: URL, size: Int, inset: CGFloat = 0.04) throws {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
         colorSpaceName: .deviceRGB, bytesPerRow: size * 4, bitsPerPixel: 32)!
@@ -43,6 +68,7 @@ try iconutil.run()
 iconutil.waitUntilExit()
 guard iconutil.terminationStatus == 0 else { fatalError("iconutil failed") }
 
-// A 108 dp adaptive layer at xxxhdpi. Keep the artwork inside launcher masks.
+// A 108 dp adaptive layer at xxxhdpi, with 64 dp artwork inside the central 66 dp safe zone.
+// https://developer.android.com/develop/ui/compose/system/icon_design_adaptive
 try writePNG(to: root.appendingPathComponent("android/app/src/main/res/drawable-nodpi/ic_launcher_foreground.png"),
-             size: 432, inset: 0.15)
+             size: 432, inset: 22.0 / 108.0)

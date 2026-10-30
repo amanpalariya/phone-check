@@ -15,6 +15,11 @@ struct PhoneCheckApp: App {
 final class CompanionAppDelegate: NSObject, NSApplicationDelegate {
     private var pane: NotificationPaneController?
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Local rebuilds can leave LaunchServices serving artwork from an older bundle.
+        if let url = Bundle.main.url(forResource: "PhoneCheck", withExtension: "icns"),
+           let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+        }
         let model = Companion()
         let controller = NotificationPaneController(model: model)
         pane = controller

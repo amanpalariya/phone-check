@@ -60,12 +60,14 @@ private struct SettingsPage<Content: View>: View {
 }
 
 private struct GeneralSettingsView: View {
+    private static let appIcon = Bundle.main.url(forResource: "PhoneCheck", withExtension: "icns")
+        .flatMap { NSImage(contentsOf: $0) } ?? NSApp.applicationIconImage ?? NSImage(size: NSSize(width: 48, height: 48))
     @ObservedObject var model: Companion
     var showPairing: () -> Void
     var body: some View {
         SettingsPage {
             HStack(spacing: 14) {
-                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 48, height: 48)
+                Image(nsImage: Self.appIcon).resizable().frame(width: 48, height: 48)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Phone Check").font(.title2.weight(.semibold))
