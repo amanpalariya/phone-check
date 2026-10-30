@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Phone Check — Android notifications on your Mac</title>
+    <meta
+      name="description"
+      content="View Android notifications, reply to messages, and control music from your Mac."
+    />
+    <meta
+      property="og:title"
+      content="Phone Check — Android notifications on your Mac"
+    />
+    <meta
+      property="og:description"
+      content="View Android notifications, reply to messages, and control music from your Mac."
+    />
+    <meta property="og:type" content="website" />
+    <link rel="icon" href="assets/app-icon.png" type="image/png" />
+    <script src="theme.js"></script>
+    <link rel="stylesheet" href="style.css" />
+    <script src="main.js" defer></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="nav wrap">
+      <a class="brand" href="#" aria-label="Phone Check home"
+        ><img src="assets/app-icon.png" width="38" height="38" alt="" />Phone
+        Check</a
+      >
+      <nav aria-label="Main navigation">
+        <a href="#features">Features</a>
+        <label class="theme-picker">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path d="M12 3a9 9 0 1 0 0 18V3Z" fill="currentColor" />
+            <circle
+              cx="12"
+              cy="12"
+              r="9"
+              stroke="currentColor"
+              stroke-width="1.6"
+            />
+          </svg>
+          <select id="theme-select" aria-label="Color theme">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+      </nav>
+    </header>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <h1 id="hero-title">Android notifications<br /><em>on your Mac</em></h1>
+        <div class="hero-actions">
+          <a class="button primary" href="https://github.com/amanpalariya/phone-check" aria-label="Get Phone Check on GitHub"
+            ><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+              <path d="M12 .297a12 12 0 0 0-3.793 23.385c.6.111.82-.261.82-.577v-2.234c-3.338.726-4.043-1.416-4.043-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.835 2.807 1.305 3.492.998.108-.776.418-1.305.762-1.605-2.665-.303-5.467-1.334-5.467-5.931 0-1.31.469-2.381 1.236-3.221-.124-.303-.536-1.524.117-3.176 0 0 1.008-.323 3.301 1.23a11.52 11.52 0 0 1 6.006 0c2.291-1.553 3.297-1.23 3.297-1.23.655 1.652.243 2.873.119 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.625-5.479 5.922.43.372.823 1.102.823 2.222v3.292c0 .319.216.694.825.576A12.001 12.001 0 0 0 12 .297Z" />
+            </svg>Get Phone Check</a
+          ><a class="demo-link" href="#demo"
+            ><span class="play-icon" aria-hidden="true">▶</span> See it in
+            motion</a
+          >
+        </div>
+      </section>
+      <section
+        class="demo-section wrap"
+        id="demo"
+        aria-label="Phone Check product demonstration"
+      >
+        <div class="demo-frame">
+          <iframe
+            id="product-video"
+            title="Phone Check product demo"
+            src="https://www.youtube-nocookie.com/embed/C_xWt42xAjg?enablejsapi=1&amp;controls=0&amp;disablekb=1&amp;playsinline=1&amp;rel=0&amp;loop=1&amp;playlist=C_xWt42xAjg"
+            width="1920"
+            height="1080"
+            loading="lazy"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+            aria-describedby="demo-description"
+          ></iframe>
+        </div>
+        <div
+          class="demo-controls"
+          role="group"
+          aria-label="Demo playback controls"
+        >
+          <button
+            id="video-toggle"
+            type="button"
+            aria-label="Play demo"
+            disabled
+          >
+            Play
+          </button>
+          <button
+            id="video-sound"
+            type="button"
+            aria-label="Turn sound on"
+            aria-pressed="false"
+            disabled
+          >
+            Sound on
+          </button>
+          <button
+            id="video-fullscreen"
+            type="button"
+            aria-label="Show demo full screen"
+          >
+            Full screen
+          </button>
+        </div>
+        <p class="caption" id="demo-description">
+          <a href="https://youtu.be/C_xWt42xAjg" target="_blank" rel="noopener"
+            >Watch on YouTube ↗</a
+          >
+        </p>
+      </section>
+      <section class="features wrap" id="features" aria-label="Features">
+        <div class="feature-gallery">
+          <figure class="feature-shot media-shot">
+            <div class="screenshot-stage">
+              <img
+                src="assets/feature-media.webp"
+                width="1340"
+                height="1070"
+                alt="Phone Check’s native media player showing Taylor Swift, a seek bar, and playback controls"
+                loading="lazy"
+              />
+            </div>
+            <figcaption><h2>Control your music</h2></figcaption>
+          </figure>
+          <figure class="feature-shot reply-shot">
+            <div class="screenshot-stage">
+              <img
+                src="assets/feature-reply.webp"
+                width="1340"
+                height="1080"
+                alt="A conversation in Phone Check with a typed reply, suggested replies, and Send"
+                loading="lazy"
+              />
+            </div>
+            <figcaption><h2>Reply from your Mac</h2></figcaption>
+          </figure>
+          <figure class="feature-shot search-shot">
+            <div class="screenshot-stage">
+              <img
+                src="assets/feature-search.webp"
+                width="1340"
+                height="1010"
+                alt="Phone Check filtering notifications with the search field"
+                loading="lazy"
+              />
+            </div>
+            <figcaption><h2>Search notifications</h2></figcaption>
+          </figure>
+          <figure class="feature-shot dismiss-shot">
+            <div class="screenshot-stage">
+              <img
+                src="assets/feature-dismiss.webp"
+                width="1340"
+                height="1010"
+                alt="The native dismiss cross on a mirrored message notification"
+                loading="lazy"
+              />
+            </div>
+            <figcaption><h2>Dismiss on your phone</h2></figcaption>
+          </figure>
+        </div>
+      </section>
+      <section class="connection wrap" aria-labelledby="connection-heading">
+        <h2 id="connection-heading">Wi-Fi and cloud sync</h2>
+        <figure class="connection-visual">
+          <img
+            src="assets/feature-connection.webp"
+            width="1600"
+            height="560"
+            alt="Enlarged native Wi-Fi and cloud indicators across a diagonal split, with the corresponding app screenshots behind them"
+            loading="lazy"
+          />
+          <figcaption><span>Local Wi-Fi</span><span>Cloud</span></figcaption>
+        </figure>
+        <p class="encryption">
+          <svg
+            width="22"
+            height="24"
+            viewBox="0 0 24 26"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M6 11V7a6 6 0 0 1 12 0v4M4 11h16v13H4z"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M12 16v4"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            /></svg
+          >Encrypted between your devices
+        </p>
+      </section>
+      <section class="setup wrap" id="setup" aria-labelledby="setup-heading">
+        <div class="pairing-shot">
+          <div class="phone-device">
+            <img
+              class="phone-screen"
+              src="assets/android-pairing.webp"
+              width="1280"
+              height="2856"
+              alt="Phone Check on Android, ready to scan the Mac’s pairing code"
+              loading="lazy"
+            />
+            <img
+              class="phone-hardware"
+              src="assets/galaxy-s26-frame.webp"
+              width="1188"
+              height="2448"
+              alt=""
+              loading="lazy"
+            />
+          </div>
+        </div>
+        <div class="setup-copy">
+          <h2 id="setup-heading">Pair your phone</h2>
+          <ol>
+            <li>Open both apps</li>
+            <li>Scan the QR code</li>
+            <li>Allow notifications</li>
+          </ol>
+        </div>
+      </section>
+    </main>
+    <footer class="wrap">
+      <a class="brand" href="#"
+        ><img src="assets/app-icon.png" width="28" height="28" alt="" />Phone
+        Check</a
+      >
+      <a href="#main">Back to top ↑</a>
+    </footer>
+  </body>
+</html>

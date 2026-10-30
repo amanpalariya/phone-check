@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "preview": "python3 -m http.server 4173 --bind 127.0.0.1 --directory dist",
+    "preview": "python3 -m http.server 4173 --bind 127.0.0.1 --directory ../docs",
     "video:studio": "npm --prefix video run dev -- --no-open",
     "video:render": "cd video && npx remotion render src/index.ts PhoneCheck ../public/assets/phone-check-demo.mp4 --codec h264 --crf 16"
   }

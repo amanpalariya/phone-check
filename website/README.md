@@ -14,31 +14,25 @@ npm run preview
 
 Open http://127.0.0.1:4173. Node is needed only for the copy-based build;
 Python 3 serves the local preview. No dependency install is needed for the site.
-Publish the contents of `website/dist/` to any static host. Assets use relative
+The build updates the tracked `docs/` website files while preserving
+`docs/development.md`. Commit the generated files alongside website source changes.
+Publish `docs/` to any static host. Assets use relative
 paths, so GitHub Pages project URLs and other subdirectory hosts work as well.
 
 ## GitHub Pages
 
-[The Pages workflow](../.github/workflows/pages.yml) builds and deploys the site
-automatically when website files change on `main`. It can also be run manually
-from Actions. Only `website/dist/` is published; captures, video source, native
-app code, and configuration files are excluded from the deployment. No package
-installation or video rendering is needed in CI.
+GitHub Pages publishes the tracked `docs/` folder directly from `main`, matching
+the kbd-mouse repository. No custom GitHub Actions workflow is needed. Captures,
+video source, native app code, and configuration files remain outside that folder.
 
-One-time setup after creating the GitHub repository:
+In **Settings → Pages → Build and deployment**, select **Deploy from a branch**,
+then **main** and **/docs**. Run `npm run build --prefix website` before committing
+website changes.
 
-1. In **Settings → Pages → Build and deployment**, select **GitHub Actions** as the source.
-2. Push `main`, or run **Publish product website** from Actions if already pushed.
-
-The neighboring `../kbd-mouse` repository belongs to `amanpalariya`. If this repo
-is created there as `phone-check`, its default Pages URL will be
-`https://amanpalariya.github.io/phone-check/`. The workflow uses the repository’s
-actual Pages URL, so it also works with a different owner or repository name.
-No GitHub remote is configured locally yet.
-
-Public app distribution is not configured in the repository, so the page clearly
-states that downloads are forthcoming. Replace that section with verified release
-URLs when signed releases exist.
+The repository is `https://github.com/amanpalariya/phone-check`, and the default
+Pages URL is `https://amanpalariya.github.io/phone-check/`. The **Get Phone Check**
+button links to the project repository and displays a GitHub icon. Replace its
+destination with a verified release URL when signed releases exist.
 
 The layout is capped at 864px. The theme selector follows the system by default;
 explicit Light and Dark choices persist locally. White and macOS-style neutral grays

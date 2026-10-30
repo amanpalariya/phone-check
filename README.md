@@ -97,7 +97,7 @@ Mac debug credentials use owner-only local files; release uses Keychain. Android
 ## Product website
 
 The standalone product page, native app captures, and editable demo video live in
-[`website/`](website/README.md). Build with `npm run build --prefix website`; host
-`website/dist/` on a static host. The [Pages workflow](.github/workflows/pages.yml)
-publishes website changes on `main` after GitHub Pages is enabled with the
-**GitHub Actions** source. See the website README for the one-time setup.
+[`website/`](website/README.md). Build with `npm run build --prefix website` and
+commit the generated files in `docs/`. GitHub Pages publishes that folder from
+`main` using **Deploy from a branch**, with no custom workflow. See the website
+README for the one-time setup.
