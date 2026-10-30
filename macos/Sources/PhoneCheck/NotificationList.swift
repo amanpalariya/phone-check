@@ -82,8 +82,8 @@ struct NotificationFeed: View {
     private var query: Binding<String> { search ?? $presentation.query }
     private var filtered: [Notice] {
         let term = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !term.isEmpty else { return notices }
-        return notices.filter {
+        guard !term.isEmpty else { return notices.filter { !$0.isMedia } }
+        return notices.filter { !$0.isMedia }.filter {
             $0.app.localizedCaseInsensitiveContains(term) || $0.title.localizedCaseInsensitiveContains(term)
                 || $0.alertText.localizedCaseInsensitiveContains(term)
         }
@@ -91,6 +91,8 @@ struct NotificationFeed: View {
     var body: some View {
         let visibleNotices = filtered
         return VStack(spacing: 6) {
+            MediaShelf(notices: notices.filter { $0.isMedia && $0.groupSummary != true }, commands: commands)
+                .padding(.horizontal, 14)
             if showsSearch && (!notices.isEmpty || !query.wrappedValue.isEmpty) {
                 NotificationSearchField(text: query)
                     .padding(.horizontal, 10)
@@ -99,7 +101,7 @@ struct NotificationFeed: View {
                 VStack(spacing: 0) {
                     NotificationList(notices: visibleNotices, commands: commands, activeNotices: notices,
                                      expansion: expansion ?? presentation.expansion)
-                    if visibleNotices.isEmpty {
+                    if visibleNotices.isEmpty && (!notices.allSatisfy(\.isMedia) || !query.wrappedValue.isEmpty) {
                         Text("No matching notifications").foregroundStyle(.secondary).padding(24)
                     }
                 }.frame(maxWidth: .infinity)

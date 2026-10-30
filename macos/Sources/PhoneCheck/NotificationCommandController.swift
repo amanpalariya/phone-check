@@ -61,7 +61,11 @@ final class NotificationCommandController: ObservableObject {
                 beginReply(notice, action: action); return
             }
         }
-        sendCommand("action", notice: notice, action: action.id, text: text)
+        sendCommand("action", notice: notice, action: action.id, text: text, capabilityRevision: action.revision)
+    }
+    func seek(_ notice: Notice, action: NoticeAction, position: Int64) {
+        guard notice.isMedia, action.enabled, action.mediaControl == "seek", position >= 0 else { return }
+        sendCommand("action", notice: notice, action: action.id, capabilityRevision: action.revision, position: position)
     }
     func receiveResult(id: String, status: String) -> Removal? {
         guard let command = pending[id] else { return nil }
@@ -77,12 +81,17 @@ final class NotificationCommandController: ObservableObject {
         }
         return nil
     }
-    private func sendCommand(_ kind: String, notice: Notice, action: String? = nil, text: String? = nil) {
-        guard connected(), !pendingKeys.contains(notice.key), current(notice.key)?.revision == notice.revision else { return }
+    private func sendCommand(_ kind: String, notice: Notice, action: String? = nil, text: String? = nil,
+                             capabilityRevision: String? = nil, position: Int64? = nil) {
+        guard connected(), !pendingKeys.contains(notice.key), let latest = current(notice.key) else { return }
+        if let capabilityRevision {
+            guard kind == "action", notice.isMedia, latest.isMedia,
+                  latest.actions?.contains(where: { $0.id == action && $0.revision == capabilityRevision && $0.enabled }) == true else { return }
+        } else if latest.revision != notice.revision { return }
         let id = UUID().uuidString
         var message = Message(kind)
-        message.key = notice.key; message.revision = notice.revision; message.command = id
-        message.action = action; message.text = text
+        message.key = notice.key; message.revision = capabilityRevision ?? notice.revision; message.command = id
+        message.action = action; message.text = text; message.position = position
         message.sentAt = Int64(Date().timeIntervalSince1970 * 1000); message.expiresAt = message.sentAt! + 8000
         let timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
             self?.finish(id, error: kind == "dismiss" ? "Dismissal not confirmed" : "Phone action not confirmed")

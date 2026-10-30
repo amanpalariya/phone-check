@@ -56,3 +56,33 @@ A `result` includes `command` and `status`. `removed` requires a removal callbac
 Mac categories deliberately omit `.customDismissAction`: ordinary Mac dismissal never sends a phone command. Explicit remote actions do require Mac authentication when locked. Ordinary Mac dismissal and banner expiry affect the Mac alone.
 
 `action` and `open` share the command UUID, key, revision and expiry fields. `action` carries an opaque action ID and optional text (maximum 4,000 UTF-16 units). Android resolves against the fresh active notification and invokes its original PendingIntent. One text or fixed-choice RemoteInput is supported; data-only or multiple-input actions are rejected. A bounded ledger prevents duplicate side effects and returns cached results. `sent` means PendingIntent dispatch was accepted, not that the app completed an operation. No PendingIntent or arbitrary Intent fields cross the wire.
+
+
+## Media capabilities
+
+Media notifications retain the same active notification keys, reconciliation, expiry,
+revision checks and command ledger as other notices. Optional `media` contains `playing`,
+`buffering`, `position`/`duration` in milliseconds, `speed`, and `updatedAt` in Unix
+milliseconds. Android converts the session's monotonic update time using a fixed clock
+offset, so recapturing unchanged state does not change the revision. Mac extrapolates
+elapsed time locally and clamps it to duration; it does not send periodic progress commands. An available `seek` capability enables the slider; committing a drag or keyboard/accessibility change sends an `action` command with integer `position` in milliseconds. Android validates the range against current duration and dispatches `TransportControls.seekTo`.
+
+Actions optionally include `mediaControl` (`play`, `pause`, `previous`, `next`, `rewind`,
+`fastForward`, `stop`, `seek`, or `custom`) and a bounded PNG `icon` (12 KiB, 48px). Media supports
+up to 12 actions; ordinary notices remain capped at six. Standard capabilities derive from
+`PlaybackState.actions`; custom capabilities retain the session's original custom action
+and extras on Android. Session tokens, custom command IDs and extras never cross the wire.
+An existing opaque `action` command invokes `MediaController.TransportControls` after a
+fresh capture validates the notification and capability. Media action descriptors carry an optional stable `revision`, derived from their opaque action ID; media action commands use this revision instead of the changing notification revision. Playback position, metadata and notification repost updates do not invalidate an unchanged action. Removed controls and new sessions receive new capabilities; seek capabilities also change with track identity. Non-media commands and media open/dismiss retain full-notification revision checks. `sent` confirms dispatch only.
+Session callbacks publish updates on the same ordered worker. Removal, disconnect and
+snapshot replacement unregister callbacks. Legacy notifications retain their original
+PendingIntents and action icons. Deploy both updated apps together.
+
+Mac presents media in the header, outside notification groups, search results and counts,
+and suppresses system banners for media updates. Dismiss/open remain explicit context-menu
+commands. Multiple players are selectable; no package-specific controls or label matching.
+
+References checked October 30, 2026: [Android media controls](https://developer.android.com/media/implement/surfaces/mobile),
+[MediaController](https://developer.android.com/reference/android/media/session/MediaController),
+[PlaybackState](https://developer.android.com/reference/android/media/session/PlaybackState), and
+[MediaStyle](https://developer.android.com/reference/android/app/Notification.MediaStyle).

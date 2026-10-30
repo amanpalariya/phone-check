@@ -16,8 +16,24 @@ struct PhoneCheckCoreTests {
         try tests.testRepeatedKeysAndGroupSummariesDoNotInflateCounts()
         try tests.testSummaryFirstMessageUpdatesAcrossApps()
         try tests.testBatteryMessage()
-        print("11 core checks passed")
+        try tests.testMediaTimelineAndNotificationSeparation()
+        print("12 core checks passed")
         try FirebaseChecks.run()
+    }
+    func testMediaTimelineAndNotificationSeparation() throws {
+        var media = notice(key: "player")
+        media.kind = "media"
+        media.media = try JSONDecoder().decode(NoticeMedia.self, from: Data(#"{"playing":true,"buffering":false,"position":10000,"duration":20000,"speed":1,"updatedAt":100000}"#.utf8))
+        try check(media.media!.position(at: Date(timeIntervalSince1970: 105)) == 15000)
+        try check(media.media!.position(at: Date(timeIntervalSince1970: 200)) == 20000)
+        media.media?.playing = false
+        try check(media.media!.position(at: Date(timeIntervalSince1970: 200)) == 10000)
+        let actionJSON = #"{"id":"opaque","title":"Siguiente","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false,"mediaControl":"next","icon":"abc"}"#
+        media.actions = [try JSONDecoder().decode(NoticeAction.self, from: Data(actionJSON.utf8))]
+        let roundTrip = try JSONDecoder().decode(Notice.self, from: JSONEncoder().encode(media))
+        try check(roundTrip == media && roundTrip.actions?.first?.mediaControl == "next")
+        try check(NotificationSection.count([media, notice()]) == 1)
+        try check(NotificationSection.sections([media]).isEmpty)
     }
     func testBatteryMessage() throws {
         // The Android JSON shape, including a missing/unknown battery percentage.

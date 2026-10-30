@@ -38,6 +38,10 @@ struct RichNoticeRow: View {
         expanded && !immediateControls && !replying && (!actions.isEmpty || notice.openable == true)
     }
     var body: some View {
+        if notice.isMedia { MediaPlaybackView(notice: notice, commands: commands).padding(12) }
+        else { notificationBody }
+    }
+    private var notificationBody: some View {
         VStack(alignment: .leading, spacing: 8) {
             if expanded {
                 header
@@ -206,16 +210,6 @@ struct RichNoticeRow: View {
             switch title {
             case "answer", "accept": return "phone.fill"
             case "decline", "reject", "hang up", "end", "end call": return "phone.down.fill"
-            default: return nil
-            }
-        }
-        if notice.kind == "media" {
-            switch title {
-            case "play", "resume": return "play.fill"
-            case "pause": return "pause.fill"
-            case "next", "next track", "skip next": return "forward.end.fill"
-            case "previous", "previous track", "skip previous": return "backward.end.fill"
-            case "stop": return "stop.fill"
             default: return nil
             }
         }

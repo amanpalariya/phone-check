@@ -14,6 +14,9 @@ enum NoticeImage {
     static func icon(_ notice: Notice) -> NSImage? {
         decode(notice.appIcon, maxBytes: 12288, type: UTType.png.identifier, maxDimension: 96).flatMap(NSImage.init(data:))
     }
+    static func actionIcon(_ action: NoticeAction) -> NSImage? {
+        decode(action.icon, maxBytes: 12288, type: UTType.png.identifier, maxDimension: 96).flatMap(NSImage.init(data:))
+    }
     private static func decode(_ encoded: String?, maxBytes: Int, type: String, maxDimension: Int) -> Data? {
         guard let encoded, encoded.count <= (maxBytes * 4 / 3 + 4),
               let bytes = Data(base64Encoded: encoded), bytes.count <= maxBytes,

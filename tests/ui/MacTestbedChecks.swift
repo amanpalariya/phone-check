@@ -18,7 +18,10 @@ func runTestbedChecks() {
         precondition(model.notices.count == count, "Repeated samples must update in place")
     }
     model.showAll()
-    precondition(NotificationSection.count(model.notices) == NotificationFixtures.Kind.allCases.count + 2)
+    precondition(NotificationSection.count(model.notices) == NotificationFixtures.Kind.allCases.count + 1)
+    precondition(NotificationSection.sections(model.notices).allSatisfy { !$0.notice.isMedia }, "Media belongs to the panel header")
+    let media = model.notices.first { $0.isMedia }!
+    precondition(media.actions?.map(\.mediaControl) == ["previous", "pause", "next"], "Localized labels must retain semantic media controls")
     model.clear()
     model.show(.text)
     let original = model.notices[0]
@@ -57,7 +60,27 @@ func runTestbedChecks() {
     settle()
     precondition(model.notices.count == 1 && model.receipt.isEmpty, "Cleared commands must not affect new samples")
     model.clear()
-    print("Mac testbed fixture, update, reply, dismissal, failure, and reset checks passed")
+    var mediaNotice = NotificationFixtures.make(.media)[0]
+    mediaNotice.actions![0].revision = String(repeating: "a", count: 64)
+    var latestMedia = mediaNotice
+    latestMedia.revision = "new-presentation"
+    var sent: [Message] = []
+    let mediaCommands = NotificationCommandController(current: { _ in latestMedia }, connected: { true }, send: { sent.append($0) })
+    let mediaAction = mediaNotice.actions![0]
+    mediaCommands.perform(mediaNotice, action: mediaAction)
+    precondition(sent.count == 1 && sent[0].revision == mediaAction.revision, "Playback updates must not invalidate live media capabilities")
+    _ = mediaCommands.receiveResult(id: sent[0].command!, status: "sent")
+    var seekAction = mediaAction
+    seekAction.id = "seek"; seekAction.mediaControl = "seek"; seekAction.revision = String(repeating: "b", count: 64)
+    latestMedia.actions!.append(seekAction)
+    mediaCommands.seek(mediaNotice, action: seekAction, position: 45000)
+    precondition(sent.count == 2 && sent[1].position == 45000 && sent[1].revision == seekAction.revision)
+    _ = mediaCommands.receiveResult(id: sent[1].command!, status: "sent")
+    latestMedia.actions = []
+    mediaCommands.perform(mediaNotice, action: mediaAction)
+    precondition(sent.count == 2, "Removed media capabilities must not execute")
+    mediaCommands.reset()
+    print("Mac testbed, media capability, seek command, and reset checks passed")
 }
 
 

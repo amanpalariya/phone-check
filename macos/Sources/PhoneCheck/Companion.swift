@@ -408,7 +408,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
                 let contentChanged = previous?.revision != item.revision
                 if contentChanged { commands.notificationChanged(item) }
                 publish()
-                if alertsAllowed && contentChanged && item.groupSummary != true && AlertPolicy.shouldAlert(
+                if alertsAllowed && contentChanged && !item.isMedia && item.groupSummary != true && AlertPolicy.shouldAlert(
                     phoneInUse: phoneAttention.inUse ?? message.phoneInUse, sentAt: message.sentAt,
                     now: Int64(Date().timeIntervalSince1970 * 1000)) {
                     alerts.deliver(item, isNew: previous == nil) { [weak self] in self?.error = "Mac notification unavailable" }
@@ -455,14 +455,18 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         guard !item.key.isEmpty, item.key.utf8.count <= 4096, item.app.count <= 256, item.title.count <= 2048,
               item.body.count <= 8192, item.revision.count == 64,
               (item.image?.count ?? 0) <= 44000, (item.appIcon?.count ?? 0) <= 16400, (item.groupKey?.count ?? 0) <= 4096,
-              (item.actions?.count ?? 0) <= 6, (item.lines?.count ?? 0) <= 20,
+              (item.actions?.count ?? 0) <= (item.isMedia ? 12 : 6), (item.lines?.count ?? 0) <= 20,
               (item.messages?.count ?? 0) <= 12 else { return false }
         if let lines = item.lines, !lines.allSatisfy({ $0.count <= 1024 }) { return false }
         if let messages = item.messages, !messages.allSatisfy({ $0.sender.count <= 256 && $0.text.count <= 2048 }) { return false }
         if let progress = item.progress, progress.max < 0 || progress.value < 0 || progress.value > max(1, progress.max) { return false }
+        if let media = item.media {
+            guard item.isMedia, media.position >= 0, media.duration >= 0, media.updatedAt >= 0,
+                  media.speed.isFinite, abs(media.speed) <= 16 else { return false }
+        }
         if let actions = item.actions {
             guard Set(actions.map(\.id)).count == actions.count else { return false }
-            return actions.allSatisfy { !$0.id.isEmpty && $0.id.count <= 64 && $0.title.count <= 128 &&
+            return actions.allSatisfy { !$0.id.isEmpty && $0.id.count <= 64 && $0.title.count <= 128 && ($0.revision == nil || $0.revision?.count == 64) && ($0.icon?.count ?? 0) <= 16400 && ($0.mediaControl?.count ?? 0) <= 32 &&
                 $0.choices.count <= 8 && $0.choices.allSatisfy { $0.count <= 256 } }
         }
         return true
@@ -473,8 +477,8 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         }
         // Android summaries repeat their children's content. They remain active
         // for group capabilities, but must not leave a second native Mac alert.
-        for notice in notices where notice.groupSummary == true { removeAlert(notice.key) }
-        alerts.register(notices)
+        for notice in notices where notice.groupSummary == true || notice.isMedia { removeAlert(notice.key) }
+        alerts.register(notices.filter { !$0.isMedia })
     }
     private func clearActive() {
         connected = false; connectionRoute = nil; battery = nil; state.reset(); phoneAttention = PhoneAttentionState()

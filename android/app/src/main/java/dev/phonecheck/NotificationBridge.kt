@@ -34,7 +34,13 @@ class NotificationBridge : NotificationListenerService() {
     @Volatile private var snapshotSent = false
     @Volatile private var session = 0
     private val active = mutableMapOf<String, JSONObject>()
-    private val capture by lazy { NotificationCapture(this) }
+    private val capture: NotificationCapture by lazy { NotificationCapture(this, worker) { key ->
+        if (ready && snapshotSent) runCatching {
+            activeNotifications?.firstOrNull { it.key == key }?.let { sbn ->
+                capture.capture(sbn)?.let { publish(it.json) }
+            }
+        }
+    } }
     private val attention by lazy { PhoneAttention(this) }
     private val attentionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {

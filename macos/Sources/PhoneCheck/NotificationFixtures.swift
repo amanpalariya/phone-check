@@ -62,9 +62,11 @@ enum NotificationFixtures {
             }
             return [notice] + children
         case .media:
+            notice.media = try? JSONDecoder().decode(NoticeMedia.self, from: Data(#"{"playing":true,"buffering":false,"position":42000,"duration":257000,"speed":1,"updatedAt":0}"#.utf8))
+            notice.media?.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
             notice.kind = "media"; notice.title = "Dreams"; notice.body = "Fleetwood Mac · Rumours"
             notice.image = artwork(symbol: "music.note", picture: true)
-            notice.actions = decode(#"[{"id":"previous","title":"Previous","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false},{"id":"pause","title":"Pause","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false},{"id":"next","title":"Next","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}]"#)
+            notice.actions = decode(#"[{"id":"previous","mediaControl":"previous","title":"Anterior","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false},{"id":"pause","mediaControl":"pause","title":"Pausar","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false},{"id":"next","mediaControl":"next","title":"Siguiente","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}]"#)
         case .call:
             notice.kind = "call"; notice.body = "Incoming call"; notice.dismissible = false
             notice.actions = decode(#"[{"id":"decline","title":"Decline","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":true},{"id":"answer","title":"Answer","input":false,"freeform":false,"choices":[],"enabled":true,"requiresUnlock":false,"destructive":false}]"#)

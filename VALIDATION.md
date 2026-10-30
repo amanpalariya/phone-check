@@ -1,5 +1,15 @@
 # Validation — October 27, 2026
 
+## Media session controls and header player — October 30, 2026
+
+- Added notification-bound Android `MediaController` / `PlaybackState` capabilities, metadata/state callbacks, bounded artwork, custom actions and original icons for localized legacy PendingIntent controls. Media lives in the Mac header with multiple-player selection, outside notification rows, groups, search results, counts and native banners.
+- Physical testing exposed a race: notification reposts/position updates invalidated full notification revisions before buttons reached Android. Media now validates a stable revision for the specific live action. Replaced/removed controls and sessions remain invalid; seek capabilities also bind to track identity. Existing expiry and duplicate-command checks remain enforced. Ordinary commands and dismissal retain full notification revision validation.
+- Implemented `ACTION_SEEK_TO` through an interactive native Mac slider and bounded integer `position` commands. Drag completion and debounced keyboard/accessibility changes dispatch seeking; unsupported sessions retain a progress display.
+- Updated the physical Galaxy S23 (SM-S911B, Android API 36) with `adb install -r`, preserving data/pairing. Updated `/Applications/Phone Check.app`, verified its signature and executable, and relaunched. Both apps reconnected over authenticated LAN. No permissions or pairing were changed.
+- The on-phone `MediaNotificationTest` passes using real OS controller/binder calls: notification repost and position changes between capture and command, successful Next and Seek, stable action identities, stale/wrong revisions, duplicate suppression, rejection of old-track seeks and out-of-range positions, and metadata callbacks without notification reposting. An earlier simple session regression also passed. The opt-in two-device synthetic action-receipt harness did not complete (timed out before all Mac controls were exercised); it is not counted as a pass.
+- Through the installed Mac panel and actual YouTube Music session on the phone, verified Play → Pause, and accessibility seeking to 0:10 with the phone's updated position mirrored back; no notification-change error appeared. Inspected native artwork, icon controls, elapsed time and multiple-player selector. Actual next-track interaction through the Mac UI, the complete synthetic receipt flow, reconnect/removal and permission-revocation scenarios still need end-to-end verification.
+- Android debug build, instrumentation build, 33 unit tests and debug lint pass. Mac development build/packaging, 12 core checks and 10 Firebase/device-state groups pass. Mac testbed checks additionally verify sending media controls despite changed presentation revisions, seek payloads and rejection of removed capabilities. Pane geometry/interaction checks also passed during this work.
+
 ## Device installation — October 30, 2026
 
 - Installed the latest development Mac build at `/Applications/Phone Check.app`, verified its code signature and executable against the build output, and relaunched it.

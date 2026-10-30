@@ -14,6 +14,7 @@ internal object DevelopmentFeatures {
         sbn.tag == TestNotifications.TAG || sbn.id == DemoScenario.CALL.number
 
     fun notificationRemoved(sbn: StatusBarNotification) {
+        if (sbn.tag == TestNotifications.TAG && sbn.id == DemoScenario.MEDIA.number) TestbedMediaSession.clear()
         if (capturesOwnNotification(sbn)) TestbedState.record("removed")
     }
 }

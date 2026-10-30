@@ -10,7 +10,8 @@ internal data class NotificationCommand(
     val actionId: String?,
     val text: String?,
     val sentAt: Long,
-    val expiresAt: Long
+    val expiresAt: Long,
+    val position: Long? = null
 ) {
     fun isFresh(now: Long): Boolean = sentAt in (now - 10000)..(now + 1000) &&
         expiresAt in (sentAt + 1)..(sentAt + 10000) && now <= expiresAt

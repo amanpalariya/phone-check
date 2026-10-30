@@ -16,6 +16,7 @@ public struct Message: Codable {
     public var key: String?
     public var revision: String?
     public var action: String?
+    public var position: Int64?
     public var text: String?
     public var command: String?
     public var sentAt: Int64?

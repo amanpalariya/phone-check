@@ -44,8 +44,8 @@ struct CompanionView: View {
     var body: some View {
         VStack(spacing: 0) {
             controlsCard
-            if (showsSamples || (model.paired && model.connected)) && !displayedNotices.isEmpty {
-                NotificationFeed(notices: displayedNotices, commands: displayedCommands, maximumHeight: feedMaximumHeight,
+            if (showsSamples || (model.paired && model.connected)) && !ordinaryNotices.isEmpty {
+                NotificationFeed(notices: ordinaryNotices, commands: displayedCommands, maximumHeight: max(60, feedMaximumHeight - (mediaNotices.isEmpty ? 0 : 190)),
                                  search: $presentation.query, showsSearch: false)
                     .padding(.bottom, 10)
             }
@@ -81,6 +81,10 @@ struct CompanionView: View {
                 }.padding(.horizontal, 16).padding(.bottom, 8)
             }
             #endif
+            if showsSamples || (model.paired && model.connected) {
+                MediaShelf(notices: mediaNotices, commands: displayedCommands)
+                    .padding(.horizontal, 14)
+            }
             if showsSearch {
                 NotificationSearchField(text: $presentation.query)
                     .padding(.horizontal, 12).padding(.bottom, 12)
@@ -131,8 +135,15 @@ struct CompanionView: View {
         return model.commands
     }
 
+    private var ordinaryNotices: [Notice] { displayedNotices.filter { !$0.isMedia } }
+    private var mediaNotices: [Notice] {
+        displayedNotices.filter { $0.isMedia && $0.groupSummary != true }.sorted {
+            if ($0.media?.playing == true) != ($1.media?.playing == true) { return $0.media?.playing == true }
+            return $0.postedAt == $1.postedAt ? $0.key < $1.key : $0.postedAt > $1.postedAt
+        }
+    }
     private var showsSearch: Bool {
-        (showsSamples || model.paired) && (!displayedNotices.isEmpty || !presentation.query.isEmpty)
+        (showsSamples || model.paired) && (!ordinaryNotices.isEmpty || !presentation.query.isEmpty)
     }
 
     private var header: some View {

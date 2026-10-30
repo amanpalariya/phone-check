@@ -13,7 +13,7 @@ import android.os.SystemClock
 import android.service.notification.StatusBarNotification
 import org.json.JSONObject
 
-/** Executes only capabilities belonging to the current, matching notification revision. */
+/** Revalidates active capabilities; media actions are independent of presentation revisions. */
 internal class NotificationCommandHandler(
     private val context: Context,
     private val capture: NotificationCapture,
@@ -48,8 +48,12 @@ internal class NotificationCommandHandler(
             if (notification == null) {
                 complete(command.id, if (command.kind == CommandKind.DISMISS) "removed" else "gone"); return
             }
-            val current = capture.capture(notification)
-            if (current?.json?.optString("revision") != command.revision) {
+            val current = capture.capture(notification) ?: run { complete(command.id, "gone"); return }
+            val mediaAction = if (command.kind == CommandKind.ACTION) current?.actions?.firstOrNull {
+                it.id == command.actionId && (it.media != null || current.json.optString("kind") == "media")
+            } else null
+            val revision = mediaAction?.let { mediaCapabilityRevision(it.id) } ?: current?.json?.optString("revision")
+            if (revision != command.revision) {
                 current?.let { onChanged(it.json) }; complete(command.id, "changed"); return
             }
             if (!isReady() || !command.isFresh(System.currentTimeMillis())) { complete(command.id, "expired"); return }
@@ -72,7 +76,18 @@ internal class NotificationCommandHandler(
         }, 8000)
     }
     private fun dispatch(command: NotificationCommand, current: CapturedNotice) {
-        val action = current.actions.firstOrNull { it.id == command.actionId }?.action
+        val handle = current.actions.firstOrNull { it.id == command.actionId }
+        if (command.kind == CommandKind.ACTION && handle?.media != null) {
+            val seeking = handle.media.operation == "seek"
+            val duration = handle.media.controller.metadata?.getLong(android.media.MediaMetadata.METADATA_KEY_DURATION) ?: 0
+            if (command.text != null || (seeking && (command.position == null || command.position !in 0..duration)) ||
+                (!seeking && command.position != null)) { complete(command.id, "unsupported_input"); return }
+            handle.media.execute(command.position)
+            complete(command.id, "sent")
+            return
+        }
+        if (command.position != null) { complete(command.id, "unsupported_input"); return }
+        val action = handle?.action
         if (command.kind == CommandKind.ACTION && action == null) { complete(command.id, "changed"); return }
         val intent = (if (command.kind == CommandKind.OPEN) current.content else action?.actionIntent)
             ?: run { complete(command.id, "unavailable"); return }
@@ -109,9 +124,14 @@ internal class NotificationCommandHandler(
         val key = message.optString("key")
         val revision = message.optString("revision")
         val action = if (kind == CommandKind.ACTION) message.optString("action") else null
+        val position = if (message.has("position")) {
+            val value = message.opt("position")
+            if (value !is Number || !value.toString().matches(Regex("[0-9]{1,19}"))) return null
+            value.toString().toLongOrNull() ?: return null
+        } else null
         val text = if (message.has("text")) message.optString("text") else null
         if (id.length !in 1..64 || key.length !in 1..4096 || revision.length != 64 ||
             (action != null && action.length !in 1..64) || (text?.length ?: 0) > 4000) return null
-        return NotificationCommand(id, key, revision, kind, action, text, message.optLong("sentAt"), message.optLong("expiresAt"))
+        return NotificationCommand(id, key, revision, kind, action, text, message.optLong("sentAt"), message.optLong("expiresAt"), position)
     }
 }

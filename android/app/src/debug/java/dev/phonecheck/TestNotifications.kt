@@ -28,6 +28,7 @@ internal object TestNotifications {
     private const val CHANNEL = "testbed"
     private const val QUIET = "testbed.silent"
     fun clear(context: Context) {
+        TestbedMediaSession.clear()
         context.stopService(Intent(context, TestbedCallService::class.java))
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.activeNotifications.filter { it.tag == TAG }.forEach { manager.cancel(TAG, it.id) }
@@ -85,11 +86,13 @@ internal object TestNotifications {
             DemoScenario.ONGOING -> builder.setOngoing(true).setAutoCancel(false)
             DemoScenario.ACTIONS -> builder.addAction(action(context, scenario, "archive", "Archive", destructive = true))
                 .addAction(action(context, scenario, "read", "Mark read"))
-            DemoScenario.MEDIA -> builder.setStyle(Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2))
+            DemoScenario.MEDIA -> builder.setStyle(Notification.MediaStyle().setMediaSession(TestbedMediaSession.token(context)))
+                .setCategory(Notification.CATEGORY_TRANSPORT).setAutoCancel(false)
+            DemoScenario.MEDIA_LEGACY -> builder.setStyle(Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2))
                 .setCategory(Notification.CATEGORY_TRANSPORT)
-                .addAction(action(context, scenario, "play", "Play"))
-                .addAction(action(context, scenario, "pause", "Pause"))
-                .addAction(action(context, scenario, "next", "Next"))
+                .addAction(Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_media_previous), "Anterior", actionIntent(context, scenario, "previous")).build())
+                .addAction(Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_media_play), "Reproducir", actionIntent(context, scenario, "play")).build())
+                .addAction(Notification.Action.Builder(android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_media_next), "Siguiente", actionIntent(context, scenario, "next")).build())
             DemoScenario.PRIVATE -> builder.setVisibility(Notification.VISIBILITY_PRIVATE).setPublicVersion(
                 Notification.Builder(context, CHANNEL).setSmallIcon(R.drawable.ic_bell)
                     .setContentTitle("Private notification").setContentText("Unlock to view").build())

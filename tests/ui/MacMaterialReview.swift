@@ -88,6 +88,7 @@ struct MaterialReview {
         window.contentView = NSHostingView(rootView: Group {
             if CommandLine.arguments.contains("--testbed") { NotificationTestbedView() }
             else if CommandLine.arguments.contains("--battery") { BatteryReview() }
+            else if CommandLine.arguments.contains("--media-review") { MediaReview() }
             else if CommandLine.arguments.contains("--pairing-review") { PairingReview() }
             else if CommandLine.arguments.contains("--setup") { Review() } else { RichReview() }
         })
@@ -401,5 +402,17 @@ private struct PairingReview: View {
         }
         .padding(28)
         .environment(\.colorScheme, CommandLine.arguments.contains("--dark") ? .dark : .light)
+    }
+}
+
+private struct MediaReview: View {
+    @StateObject private var model = Companion(startServices: false)
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            CompanionView(model: model).environment(\.colorScheme, .light)
+            CompanionView(model: model).environment(\.colorScheme, .dark)
+        }.padding(16).onAppear {
+            model.showPreview(NotificationFixtures.make(.media) + NotificationFixtures.make(.text), battery: BatteryStatus(percentage: 73, charging: false))
+        }
     }
 }

@@ -68,6 +68,25 @@ internal class NotificationImages(private val context: Context) {
         while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 960) sample *= 2
         return BitmapFactory.decodeByteArray(data, 0, data.size, BitmapFactory.Options().apply { inSampleSize = sample })
     }
+    fun actionArtwork(notification: Notification): String? = runCatching {
+        val icon = notification.getLargeIcon() ?: return null
+        val localUri = icon.type == Icon.TYPE_URI || icon.type == Icon.TYPE_URI_ADAPTIVE_BITMAP
+        val bitmap = (if (localUri) readLocalImage(icon.uri) else (icon.loadDrawable(context) as? BitmapDrawable)?.bitmap) ?: return null
+        val result = encode(bitmap)
+        if (localUri) bitmap.recycle()
+        result
+    }.getOrNull()
+    fun artwork(bitmap: Bitmap?): String? = bitmap?.let { runCatching { encode(it) }.getOrNull() }
+    fun actionIcon(icon: Icon?): String? = runCatching {
+        icon ?: return null
+        if (icon.type == Icon.TYPE_URI || icon.type == Icon.TYPE_URI_ADAPTIVE_BITMAP) return null
+        val drawable = icon.loadDrawable(context) ?: return null
+        val bitmap = Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, 48, 48); drawable.draw(Canvas(bitmap))
+        val stream = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream); bitmap.recycle()
+        if (stream.size() > 12288) null else Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+    }.getOrNull()
     private fun encode(source: Bitmap): String? {
         if (source.width.toLong() * source.height > 32_000_000) return null
         val software = if (source.config == Bitmap.Config.HARDWARE) source.copy(Bitmap.Config.ARGB_8888, false) else source
