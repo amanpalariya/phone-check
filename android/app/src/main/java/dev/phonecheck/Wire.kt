@@ -52,6 +52,7 @@ internal class SessionCipher(private val key: ByteArray) {
 
 internal data class Pairing(val host: String, val port: Int, val secret: ByteArray, val peer: String,
     val ownerUID: String? = null, val pairID: String? = null) {
+    val isLocalOnly: Boolean get() = ownerUID == null && pairID == null
     fun json() = JSONObject().put("host", host).put("port", port)
         .put("secret", Wire.b64(secret)).put("peer", peer)
         .put("ownerUID", ownerUID).put("pairID", pairID)

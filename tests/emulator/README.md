@@ -1,9 +1,10 @@
 # Android Emulator integration tests
 
-This is the retained LAN integration harness. It does not exercise the current Google login
-or cloud pairing flow. Its Android setup/UI expectations need adapting to explicit LAN test
-injection before rerunning it after the Firebase-only switch. Current Firebase validation
-is documented in `firebase/README.md`; no full emulator/device run is claimed for this migration.
+This exercises the signed-out local pairing flow. The Android UI test switches from QR
+scanning to manual code entry, then checks notification and local-network permissions.
+The Mac host uses the default signed-out production startup, without cloud configuration.
+It does not exercise Google sign-in or Firebase handover. The adapted tests compile;
+no new emulator run is claimed while the only attached emulator is offline.
 
 These tests use a real Android `NotificationListenerService` and the production Swift `Companion`, `FramedConnection`, and crypto code. A separate Mac `.app` bundle isolates Keychain items and notification-center state from Phone Check. No production pairing is read or changed.
 
@@ -34,6 +35,7 @@ Add `--native-alerts` to request notification authorization for the isolated Mac
 - Pairing UI, notification-access explanation, and Android 17 local-network-access state.
 - Real authenticated Android-to-Mac transport and initial active-state snapshot.
 - Posting and updating the same Android notification without duplicate active entries.
+- Post, update, and Mac dismissal with Android in the background and its display off (added; not yet run on device).
 - Calling the production Mac dismissal method; checking both Mac state and Android's actual active notifications for confirmed removal.
 - Phone-side removal clearing Mac state.
 - A new authenticated connection and snapshot after reconnect, with subsequent removal still working.

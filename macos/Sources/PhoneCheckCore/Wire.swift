@@ -8,6 +8,8 @@ public struct Message: Codable {
     public var nonce: String?
     public var peer: String?
     public var deviceName: String?
+    public var hosts: [String]?
+    public var port: Int?
     public var proof: String?
     public var items: [Notice]?
     public var item: Notice?

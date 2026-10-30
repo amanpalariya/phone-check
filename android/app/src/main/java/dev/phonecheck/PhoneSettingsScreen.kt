@@ -111,7 +111,7 @@ internal fun PhoneSettingsScreen(
                                 Text(if (signedIn) name else "Sign in to Phone Check",
                                     style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
                                     textAlign = TextAlign.Center, modifier = Modifier.padding(top = 20.dp))
-                                Text(if (signedIn) accountEmail ?: "Signed in with Google" else "Use the same Google account on both devices.",
+                                Text(if (signedIn) accountEmail ?: "Signed in with Google" else "Sign in to sync beyond your local network.",
                                     style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
                                 Spacer(Modifier.height(24.dp))
@@ -142,7 +142,7 @@ internal fun PhoneSettingsScreen(
                                     textAlign = TextAlign.Center, modifier = Modifier.padding(top = 6.dp))
                                 Spacer(Modifier.height(24.dp))
                                 when {
-                                    !paired -> Button(onClick = onSetup) { Text(if (signedIn) "Pair Mac" else "Sign in to pair") }
+                                    !paired -> Button(onClick = onSetup) { Text("Pair Mac") }
                                     !access -> Button(onClick = onNotificationAccess) { Text("Allow notification access") }
                                     !connected -> FilledTonalButton(onClick = onReconnect) { Text("Reconnect") }
                                 }
@@ -164,7 +164,7 @@ internal fun PhoneSettingsScreen(
     }
     if (confirmSignOut) AlertDialog(onDismissRequest = { confirmSignOut = false },
         title = { Text("Sign out of Phone Check?") },
-        text = { Text("Your devices will be unpaired. You can sign in and pair again anytime.") },
+        text = { Text("Cloud sync will stop. Local-only pairing stays connected.") },
         confirmButton = { TextButton(onClick = { confirmSignOut = false; onSignOut() },
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Sign out") } },
         dismissButton = { TextButton(onClick = { confirmSignOut = false }) { Text("Cancel") } })

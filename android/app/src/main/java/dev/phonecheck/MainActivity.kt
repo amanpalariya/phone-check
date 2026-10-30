@@ -39,19 +39,30 @@ class MainActivity : ComponentActivity() {
             var error by remember { mutableStateOf<String?>(null) }
             var scanning by remember { mutableStateOf(false) }
             val pair: (String) -> Unit = { value ->
-                runCatching { Pairing.parse(value, com.google.firebase.FirebaseApp.getInstance().options.projectId) }
+                runCatching {
+                    val project = if (value.trim().startsWith("pc2|")) com.google.firebase.FirebaseApp.getInstance().options.projectId else null
+                    Pairing.parse(value, project)
+                }
                     .onSuccess { pairing ->
-                        if (pairing.pairID == null || pairing.ownerUID == null || pairing.ownerUID != CloudAccount.auth.currentUser?.uid) {
+                        val savePairing = {
+                            runCatching { PairingStore(this@MainActivity).save(pairing) }
+                                .onSuccess {
+                                    code = ""; error = null
+                                    BridgeState.paired = true; BridgeState.localOnly = pairing.isLocalOnly
+                                    BridgeState.status = "Allow notification access"
+                                    BridgeState.service?.restart()
+                                }.onFailure { error = "Could not save pairing. Pair again on your Mac." }
+                            Unit
+                        }
+                        if (pairing.isLocalOnly) {
+                            savePairing(); return@onSuccess
+                        }
+                        if (pairing.ownerUID != CloudAccount.auth.currentUser?.uid) {
                             error = "Sign in with the same Google account as your Mac."; return@onSuccess
                         }
                         CloudPairing.join(pairing) { joined ->
                             if (!joined) { error = "Pairing code expired or already used." }
-                            else runCatching { PairingStore(this@MainActivity).save(pairing) }
-                                .onSuccess {
-                                    code = ""; error = null
-                                    BridgeState.paired = true; BridgeState.status = "Allow notification access"
-                                    BridgeState.service?.restart()
-                                }.onFailure { error = "Could not save pairing. Pair again on your Mac." }
+                            else savePairing()
                         }
                     }.onFailure { error = "Invalid pairing code. Use the code shown on your Mac." }
             }
@@ -71,14 +82,16 @@ class MainActivity : ComponentActivity() {
                     },
                     onSignOut = {
                         val uid = CloudAccount.auth.currentUser?.uid
-                        if (uid != null) CloudAccount.root(uid).removeValue { failure, _ ->
+                        if (PairingStore(this).load()?.isLocalOnly == true) {
+                            CloudAccount.auth.signOut()
+                        } else if (uid != null) CloudAccount.root(uid).removeValue { failure, _ ->
                             if (failure != null) error = "Could not sign out. Try again."
                             else runCatching { PairingStore(this).clear() }.onSuccess {
                                 CloudAccount.auth.signOut(); BridgeState.service?.restart()
                             }.onFailure { error = "Could not clear pairing" }
                         }
                     },
-                    paired = BridgeState.paired, access = access, network = true,
+                    paired = BridgeState.paired, localOnly = BridgeState.localOnly, access = access, network = network,
                     networkBlocked = networkBlocked, listenerReady = BridgeState.listenerReady,
                     status = BridgeState.status, code = code, error = error ?: authError, scanning = scanning,
                     onCodeChange = { code = it; error = null },
@@ -132,7 +145,9 @@ class MainActivity : ComponentActivity() {
         access = getSystemService(NotificationManager::class.java).isNotificationListenerAccessGranted(
             ComponentName(this, NotificationBridge::class.java))
         network = Build.VERSION.SDK_INT < 37 || checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") == PackageManager.PERMISSION_GRANTED
-        BridgeState.paired = PairingStore(this).load()?.pairID != null
+        val pairing = PairingStore(this).load()
+        BridgeState.paired = pairing != null
+        BridgeState.localOnly = pairing?.isLocalOnly == true
         if (!access && BridgeState.paired) BridgeState.status = "Allow notification access"
 
     }

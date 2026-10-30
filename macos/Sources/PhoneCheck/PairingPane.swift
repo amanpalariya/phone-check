@@ -14,15 +14,7 @@ struct PairingPane: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            if !account.signedIn {
-                PairingDevices().padding(.vertical, 8)
-                Text("Your phone, right here.").font(.title2.weight(.semibold))
-                Text("Use the same Google account on Android.")
-                    .font(.callout).foregroundStyle(.secondary)
-                Button(account.busy ? "Signing in…" : "Sign in with Google", action: account.signIn)
-                    .disabled(account.busy || !account.configured).modifier(NativePrimaryAction())
-                if let error = account.error { Text(error).font(.caption).foregroundStyle(.red) }
-            } else if model.pairing {
+            if model.pairing {
                 VStack(spacing: 6) {
                     Text("Scan to pair").font(.title2.weight(.semibold))
                     Text("Open Phone Check on Android.")
@@ -38,7 +30,7 @@ struct PairingPane: View {
                             .font(.callout.weight(.medium).monospacedDigit()).foregroundStyle(.secondary)
                     }
                 }
-                if model.addresses.count > 1 {
+                if model.code.hasPrefix("pc1|") && model.addresses.count > 1 {
                     Picker("Mac address", selection: $model.host) {
                         ForEach(model.addresses, id: \.self) { Text($0).tag($0) }
                     }
@@ -67,15 +59,22 @@ struct PairingPane: View {
                     .padding(.top, 8).padding(.bottom, 4)
                 VStack(spacing: 7) {
                     Text("Your phone, right here.").font(.title2.weight(.semibold))
-                    Text("Bring your Android notifications to Mac.")
+                    Text(account.signedIn ? "Bring your Android notifications to Mac." : "Connect both devices to the same network.")
                         .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
-                Button(model.listening ? "Pair phone" : "Retry connection") {
-                    if model.listening { model.beginPairing() } else { model.startListening() }
+                Button(model.listening || !account.signedIn ? "Pair phone" : "Retry connection") {
+                    if model.listening || !account.signedIn { model.beginPairing() } else { model.startListening() }
                 }
                 .modifier(NativePrimaryAction())
-                Text("Pair once. Connect wherever you are online.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if account.signedIn {
+                    Text("Pair once. Connect wherever you are online.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Button(account.busy ? "Signing in…" : "Sign in for cloud sync", action: account.signIn)
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .disabled(account.busy || !account.configured)
+                    if let error = account.error { Text(error).font(.caption).foregroundStyle(.red) }
+                }
             }
         }
         .onChange(of: model.code) { _, _ in presentation.copiedCode = false }

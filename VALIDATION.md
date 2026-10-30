@@ -1,5 +1,24 @@
 # Validation — October 27, 2026
 
+## Device installation — October 30, 2026
+
+- Installed the latest development Mac build at `/Applications/Phone Check.app`, verified its code signature and executable against the build output, and relaunched it.
+- Updated the connected Samsung Galaxy S23 (SM-S911B) using `adb install -r` without clearing app data; installation succeeded and MainActivity launched. This confirms installation/launch only; automatic handover and unsigned local sync have not yet been exercised between these physical devices.
+
+## Signed-out local sync — October 30, 2026
+
+- Mac signed-out startup now starts its LAN listener and offers local QR/copy pairing. Android accepts local codes without account/project checks, persists local pairing, and selects the LAN transport without creating a Firebase mailbox. Sign-in is optional in setup; local-network permission blocks only local-only pairs.
+- Local pairs survive later sign-in and sign-out. Cloud pairing keeps the automatic local/Firebase behavior; enabling cloud fallback for a local-only pair requires explicit unpair/re-pair.
+- Both development apps build. Android's 31 unit tests and debug lint pass; the adapted unsigned pairing/permission instrumentation APK compiles. No phone or usable emulator was available, so Android UI/device execution remains unverified.
+- `tests/local/check-unsigned-local.sh` passed against the production Mac companion with no cloud config/account and an encrypted simulated phone over real loopback TCP: default signed-out startup, five-minute local QR, rejected unknown secret, snapshot/battery sync, persisted peer identity, dismiss command and simulated confirmation, fresh-nonce reconnect, and unpair cleanup. This verifies transport/model behavior on Mac, not Android OS notification dismissal or hardware Wi-Fi/privacy behavior.
+
+## Automatic local switching — October 30, 2026
+
+- Added encrypted Firebase address discovery, authenticated LAN probing, local-only notification/action delivery with Firebase streams and rotation stopped, and fresh-session Firebase fallback. No Firebase rules or server deployment changes. Android local-network permission remains optional.
+- Android development APK, 29 unit tests (including 10 deterministic automatic-route tests), and lint pass. Mac development build/packaging, 11 core checks and 10 Firebase/device-state groups pass, including encrypted address delivery and detached observer cleanup.
+- Route fixtures verify continued cloud delivery while probing, local-only writes after authentication, fallback without command replay, late-callback suppression, retries across addresses, changed-address probe cancellation, cached-address recovery while cloud reconnects, denied permission, stop and revocation.
+- No physical Android phone was connected (only an offline emulator). Actual LAN/cloud handover, bandwidth reduction, sleep/wake, DHCP changes, actions/replies/confirmed dismissal and permission revocation were not verified on devices. Built artifacts are available; apps were not installed or relaunched for this change.
+
 ## Pairing in the Mac panel — October 29, 2026
 
 - Moved pairing into the menu-bar panel: device welcome, QR code, actual expiry countdown, optional Mac address selector, cancellation, and copy confirmation. First launch/reopening opens the panel; Settings routes pairing there and retains phone management.
@@ -390,3 +409,26 @@ Additional device checks:
   battery status and stayed Connected during follow-up; Android's current process logged no
   permission-denied errors or fatal exceptions. Long-duration/sleep/token-expiry testing and
   the complete notification action matrix remain separate device checks.
+
+
+## Background operation and route indicator — October 30, 2026
+
+- Android keeps sync in the system-bound notification listener, independent of activity
+  visibility and display state. Added debounced recovery on network changes and after
+  Doze, with callback cleanup on service destruction. No new settings or permission prompts.
+- Added a deadline for unanswered cloud session requests so a sleeping/offline Mac cannot
+  leave Android waiting indefinitely. Regression checks cover timeout, acceptance and stop.
+- Mac holds an App Nap activity only while paired/pairing and awake; it allows system sleep.
+  Sleep closes the listener and active connections, stops cloud sync, clears transient state,
+  and releases the activity. Wake starts fresh services. Listener failures retry automatically.
+- The header shows the synchronized session's actual local/cloud route next to Settings;
+  disconnect resets it. Battery presentation and the menu-bar count remain independent.
+- Android debug app, instrumentation APK, unit tests and lint passed. Mac debug build,
+  11 core checks, 10 Firebase/device-state groups and native pane checks passed.
+  The isolated `--lifecycle-only` check passed with a simulated transport, covering sleep,
+  rejected connections while asleep, wake, route reset and activity release on unpair.
+- The socket-based local integration check could not run: even a standalone Network.framework
+  listener fails here with POSIX EINVAL (22). Port 47833 isolates checks from the installed app.
+  Added screen-off post/update/dismiss instrumentation coverage; it compiles but was not run.
+  No Android device is attached. Physical screen-off/deep-idle behavior, real Mac sleep/wake,
+  cloud/local handover and live icon appearance still require device verification.

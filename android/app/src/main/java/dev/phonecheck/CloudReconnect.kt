@@ -9,6 +9,14 @@ internal class CloudReconnect(
     private var nextDelay = 1000L
     private var cancel: (() -> Unit)? = null
 
+    /** An acknowledged request can still go unanswered while the Mac sleeps. */
+    fun awaitingOffer() {
+        stop()
+        val attempt = generation
+        cancel = schedule(30_000) {
+            if (attempt == generation) { cancel = null; generation++; retry() }
+        }
+    }
     fun failed() {
         cancel?.invoke()
         val attempt = ++generation

@@ -18,6 +18,21 @@ class CloudPairingCodeTest {
         assertEquals(pairing.peer, Pairing.restore(pairing.json()).peer)
         assertEquals(id, Pairing.restore(pairing.json()).pairID)
     }
+    @Test fun localPairingNeedsNoProjectOrAccountAndSurvivesStorage() {
+        val pairing = Pairing.parse("pc1|192.168.1.2|47831|$encoded")
+        assertTrue(pairing.isLocalOnly)
+        assertNull(pairing.ownerUID); assertNull(pairing.pairID)
+        val restored = Pairing.restore(pairing.json())
+        assertTrue(restored.isLocalOnly); assertEquals(pairing.host, restored.host)
+        assertEquals(pairing.port, restored.port); assertEquals(pairing.peer, restored.peer)
+        assertArrayEquals(secret, restored.secret)
+        assertFalse(Pairing.parse(code, "test-project").isLocalOnly)
+    }
+    @Test fun localPairingRefusesPublicHostsAndInvalidPorts() {
+        for (endpoint in listOf("8.8.8.8|47831", "localhost|47831", "127.0.0.1|47831", "10.0.0.2|80", "10.0.0.2|65536")) {
+            assertThrows(IllegalArgumentException::class.java) { Pairing.parse("pc1|$endpoint|$encoded") }
+        }
+    }
     @Test fun refusesOtherProjectsAndMalformedSecrets() {
         for (candidate in listOf(code.replace("test-project", "other"), code.replace(encoded, "AA"), code.replace(id, "invalid"))) {
             assertThrows(IllegalArgumentException::class.java) { Pairing.parse(candidate, "test-project") }

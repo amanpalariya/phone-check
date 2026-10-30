@@ -1,6 +1,20 @@
 # Protocol v1
 
-The retained LAN transport uses direct TCP on port 47831. There is no discovery service, automatic cloud fallback, or forwarding before authentication. Firebase is the selected app transport and reuses the same notification messages over a separate encrypted mailbox envelope; see [Firebase sync](../firebase/README.md). Pairing encodes `pc1|privateIPv4|port|base64url(secret)`. The Mac generates a random 256-bit secret, exposes it only during an explicit five-minute pairing window, and accepts one persisted phone UUID. A new pairing secret invalidates earlier codes. Treat a pairing code as a credential.
+Signed-in devices pair through Firebase with a `pc2` code, then automatically
+prefer direct TCP on port 47831 when reachable. Firebase carries encrypted `local_endpoint`
+messages (`hosts`: up to eight literal private IPv4 addresses; `port`: 1024–65535) after a
+cloud snapshot. Android validates addresses and mutually authenticates the local link before
+switching; cloud listeners and notification writes stop while local. Failure resumes a fresh
+Firebase session and silent snapshot. Unreachable local addresses retry after 30 seconds
+without interrupting cloud delivery. See [Firebase sync](../firebase/README.md).
+
+Signed-out users pair directly using `pc1|privateIPv4|port|base64url(secret)`.
+This mode uses no Firebase account or messages, persists as a local-only pair after sign-in,
+and reconnects to the saved address. It requires local-network permission and reachability;
+a changed Mac address requires pairing again. The LAN test harness uses the same flow.
+The Mac generates a random 256-bit secret, exposes it only during an explicit five-minute
+pairing window, and accepts one persisted phone UUID. A new pairing secret invalidates
+earlier codes. Treat a pairing code as a credential. No content is forwarded before authentication.
 
 ## Authentication and encryption
 

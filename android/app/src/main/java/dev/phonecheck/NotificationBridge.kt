@@ -20,6 +20,7 @@ import org.json.JSONObject
 internal object BridgeState {
     var status by mutableStateOf("Not paired")
     var paired by mutableStateOf(false)
+    var localOnly by mutableStateOf(false)
     var listenerReady by mutableStateOf(false)
     var service: NotificationBridge? = null
 }
@@ -43,11 +44,37 @@ class NotificationBridge : NotificationListenerService() {
     private val battery: PhoneBattery by lazy { PhoneBattery(this) {
         inSession { if (snapshotSent) send(deviceStatusMessage()) }
     } }
+    private val backgroundRecovery by lazy { BackgroundRecovery(this, main) { networkChanged ->
+        // A fresh session reconciles changes missed while Android suspended networking.
+        if (ready && (networkChanged || !snapshotSent)) restart()
+    } }
     private var transport: NotificationTransport? = null
     private var requiresLocalNetwork = false
     private val callbacks = TransportCallbacks(::transportConnected, ::transportMessage, ::transportDisconnected, ::cloudPairingRevoked)
     private var createTransport: (Pairing, TransportCallbacks) -> NotificationTransport = { pairing, callbacks ->
-        CloudTransport(pairing, main, callbacks)
+        if (pairing.isLocalOnly) {
+            LanTransport(pairing, main, mayConnect = { localAllowed() },
+                onConnecting = { BridgeState.status = "Connecting…" },
+                onConnected = callbacks.onConnected, onMessage = callbacks.onMessage,
+                onDisconnected = callbacks.onDisconnected)
+        } else AutomaticTransport(callbacks,
+            cloudFactory = { CloudTransport(pairing, main, it) },
+            localFactory = { host, port, events ->
+                LanTransport(pairing.copy(host = host, port = port), main,
+                    mayConnect = { localAllowed() }, onConnecting = {},
+                    onConnected = events.onConnected, onMessage = events.onMessage,
+                    onDisconnected = events.onDisconnected)
+            }, mayUseLocal = { localAllowed() },
+            localMode = { local ->
+                if (local) {
+                    CloudAccount.database.goOffline()
+                    CloudAccount.database.purgeOutstandingWrites()
+                } else CloudAccount.database.goOnline()
+            },
+            schedule = { delay, action ->
+                val task = Runnable { action() }; main.postDelayed(task, delay)
+                val cancel: () -> Unit = { main.removeCallbacks(task) }; cancel
+            })
     }
     private fun cloudPairingRevoked() {
         stopLink()
@@ -59,7 +86,7 @@ class NotificationBridge : NotificationListenerService() {
     private fun transportMessage(message: JSONObject) = inSession { if (ready) handle(message) }
     private fun transportDisconnected() {
         session++; snapshotSent = false; resetWorker()
-        BridgeState.status = if (!requiresLocalNetwork) "Disconnected"
+        BridgeState.status = if (!requiresLocalNetwork && !BridgeState.localOnly) "Disconnected"
             else if (allowed()) "Disconnected · retrying" else "Allow local network"
     }
     /** Composition point for an explicitly selected transport. Each restart creates a fresh instance. */
@@ -83,7 +110,7 @@ class NotificationBridge : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate(); BridgeState.service = this
         CloudAccount.auth.addAuthStateListener(authListener)
-        battery.start()
+        battery.start(); backgroundRecovery.start()
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)
             addAction(Intent.ACTION_USER_PRESENT)
@@ -103,20 +130,22 @@ class NotificationBridge : NotificationListenerService() {
     override fun onDestroy() {
         ready = false; BridgeState.listenerReady = false; BridgeState.service = null
         CloudAccount.auth.removeAuthStateListener(authListener)
+        backgroundRecovery.close()
         unregisterReceiver(attentionReceiver); battery.close()
         stopLink(); transport?.close(); thread.quitSafely(); super.onDestroy()
     }
-    private fun allowed() = !requiresLocalNetwork || Build.VERSION.SDK_INT < 37 ||
+    private fun allowed() = !(requiresLocalNetwork || BridgeState.localOnly) || localAllowed()
+    private fun localAllowed() = Build.VERSION.SDK_INT < 37 ||
         checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") == PackageManager.PERMISSION_GRANTED
     fun restart() {
         check(Looper.myLooper() == Looper.getMainLooper())
         stopLink()
         val pairing = PairingStore(this).load()
-        BridgeState.paired = pairing?.pairID != null
+        BridgeState.paired = pairing != null
+        BridgeState.localOnly = pairing?.isLocalOnly == true
         when {
             pairing == null -> BridgeState.status = "Not paired"
-            pairing.pairID == null -> BridgeState.status = "Pair your Mac again"
-            CloudAccount.auth.currentUser?.uid != pairing.ownerUID -> BridgeState.status = "Sign in to connect"
+            !pairing.isLocalOnly && CloudAccount.auth.currentUser?.uid != pairing.ownerUID -> BridgeState.status = "Sign in to connect"
             !ready -> BridgeState.status = "Allow notification access"
             !allowed() -> BridgeState.status = "Allow local network"
             else -> {

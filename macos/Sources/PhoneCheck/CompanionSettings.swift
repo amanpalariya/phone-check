@@ -125,7 +125,7 @@ private struct AccountSettingsView: View {
                     .padding(.bottom, 18)
                     Text(account.signedIn ? name : "Sign in to Phone Check")
                         .font(.title2.weight(.semibold)).multilineTextAlignment(.center).textSelection(.enabled)
-                    Text(account.signedIn ? account.email ?? "Signed in with Google" : "Use the same Google account on both devices.")
+                    Text(account.signedIn ? account.email ?? "Signed in with Google" : "Sign in to sync beyond your local network.")
                         .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         .textSelection(.enabled).padding(.top, 5)
                     if account.signedIn {
@@ -154,7 +154,7 @@ private struct AccountSettingsView: View {
         .alert("Sign out of Phone Check?", isPresented: $confirmation.showing) {
             Button("Cancel", role: .cancel) {}
             Button("Sign Out", role: .destructive, action: model.signOut)
-        } message: { Text("Your devices will be unpaired. You can sign in and pair again anytime.") }
+        } message: { Text("Cloud sync will stop. Local-only pairing stays connected.") }
     }
 }
 
@@ -188,7 +188,7 @@ struct PhoneSettingsView: View {
                 }.font(.callout)
             }
             Text(model.paired ? "Notifications and their actions sync while your devices are connected."
-                 : "Sign in with the same Google account, then scan the QR code on your Mac.")
+                 : "Scan the QR code on your Mac. Sign in on both devices for cloud sync.")
                 .font(.callout).foregroundStyle(.secondary).padding(.horizontal, 4)
             if let error = model.error {
                 Label(error, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)

@@ -12,13 +12,14 @@ enum FirebaseChecks {
         try orderedDeliveryAndDuplicates()
         try goldenFrame()
         try batteryDelivery()
+        try localEndpointDelivery()
         try rejectsGapsTamperingExpiredAndOtherSessions()
         try boundsAndFailures()
         try configurationAndAttention()
         try streamFraming()
         try controlStream()
         try closingDuringTokenRefresh()
-        print("9 Firebase/device-state check groups passed")
+        print("10 Firebase/device-state check groups passed")
     }
     static func closingDuringTokenRefresh() throws {
         func wait(until condition: () -> Bool) throws {
@@ -65,6 +66,21 @@ enum FirebaseChecks {
         do { for byte in String(repeating: "x", count: 16_385).utf8 { _ = try bounded.append(byte) } }
         catch { rejected = true }
         try expect(rejected)
+    }
+    static func localEndpointDelivery() throws {
+        let bus = MailboxFixture(), config = try session()
+        let phone = FirebaseConnection(mailbox: bus.client(), session: config, isPhone: true, now: { 100_000 })
+        let mac = FirebaseConnection(mailbox: bus.client(), session: config, now: { 100_000 })
+        var received: Message?
+        phone.onMessage = { received = $0 }
+        phone.start(); mac.start()
+        var endpoint = Message("local_endpoint")
+        endpoint.hosts = ["192.168.1.2", "10.0.0.2"]; endpoint.port = Int(Wire.port)
+        mac.send(endpoint); bus.drain()
+        try expect(received?.type == "local_endpoint" && received?.hosts == endpoint.hosts && received?.port == 47831)
+        try expect(!(bus.values["macToPhone"] ?? "").contains("192.168.1.2"))
+        phone.close(); mac.close()
+        try expect(bus.observers.isEmpty)
     }
     static func batteryDelivery() throws {
         let bus = MailboxFixture(), config = try session()

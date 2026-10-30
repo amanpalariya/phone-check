@@ -30,5 +30,9 @@ internal object CloudAccount {
                 .addOnFailureListener { if (continuation.isActive) continuation.resumeWithException(it) }
         }
     }
-    fun root(uid: String) = database.getReference("accounts").child(uid)
+    fun root(uid: String): com.google.firebase.database.DatabaseReference {
+        // Explicit cloud work (including unpair/sign-out) must also work during local mode.
+        database.goOnline()
+        return database.getReference("accounts").child(uid)
+    }
 }

@@ -137,18 +137,27 @@ struct CompanionView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
-            Menu {
-                Button("Settings…", action: showSettings)
-                    .keyboardShortcut(",")
-                Divider()
-                Button("Quit Phone Check") { NSApplication.shared.terminate(nil) }
-                    .keyboardShortcut("q")
-            } label: {
-                Image(systemName: "gearshape").font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.secondary).frame(width: 28, height: 28)
+            HStack(spacing: 6) {
+                Menu {
+                    Button("Settings…", action: showSettings)
+                        .keyboardShortcut(",")
+                    Divider()
+                    Button("Quit Phone Check") { NSApplication.shared.terminate(nil) }
+                        .keyboardShortcut("q")
+                } label: {
+                    Image(systemName: "gearshape").font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary).frame(width: 28, height: 28)
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                .fixedSize().tint(.primary).help("Settings").accessibilityLabel("Settings")
+                if model.paired && !showsSamples {
+                    Image(systemName: model.connectionRoute == .local ? "wifi" :
+                            model.connectionRoute == .cloud ? "cloud" : "wifi.slash")
+                        .font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary)
+                        .frame(width: 24, height: 28)
+                        .help(connectionDescription).accessibilityLabel(connectionDescription)
+                }
             }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden)
-            .fixedSize().tint(.primary).help("Settings").accessibilityLabel("Settings")
             .frame(width: 82, alignment: .leading)
             Spacer(minLength: 0)
             Text("Phone Check").font(.headline)
@@ -163,6 +172,14 @@ struct CompanionView: View {
             .frame(width: 82, height: 28, alignment: .trailing)
         }
         .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 8)
+    }
+
+    private var connectionDescription: String {
+        switch model.connectionRoute {
+        case .local: "Connected over local network"
+        case .cloud: "Connected over cloud"
+        case nil: model.status
+        }
     }
 
     private var pairedContent: some View {

@@ -35,6 +35,24 @@ class CloudReconnectTest {
         clock.jobs.forEach { it.action() }
         assertEquals(1, requests)
     }
+    @Test fun unansweredOfferRetriesEvenWithoutADatabaseError() {
+        val clock = Clock(); var requests = 0
+        val reconnect = CloudReconnect(clock::schedule) { requests++ }
+        reconnect.awaitingOffer()
+        assertEquals(30_000L, clock.jobs.single().delay)
+        clock.jobs.single().action()
+        assertEquals(1, requests)
+    }
+    @Test fun acceptedOfferAndStopInvalidateOfferTimeouts() {
+        val clock = Clock(); var requests = 0
+        val reconnect = CloudReconnect(clock::schedule) { requests++ }
+        reconnect.awaitingOffer(); reconnect.accepted()
+        clock.jobs.last().action()
+        reconnect.awaitingOffer(); reconnect.stop()
+        clock.jobs.last().action()
+        assertEquals(0, requests)
+        assertTrue(clock.jobs.all { it.cancelled })
+    }
     @Test fun stoppingTheTransportInvalidatesQueuedRetries() {
         val clock = Clock(); var requests = 0
         val reconnect = CloudReconnect(clock::schedule) { requests++ }

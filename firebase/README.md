@@ -1,9 +1,54 @@
 # Firebase sync
 
-Firebase Realtime Database is now the only selected app transport. The LAN implementations
-remain in source for a future settings option; there is no LAN listener, permission request,
-or automatic fallback in normal Firebase operation. Both devices need internet access, not
-the same network. This implementation uses the free Spark plan and no Cloud Functions.
+Firebase Realtime Database handles pairing, address discovery, and delivery when a local
+connection is unavailable. The apps automatically prefer their encrypted LAN transport.
+This implementation uses the free Spark plan and no Cloud Functions.
+
+## Local-only pairing without sign-in
+
+Google sign-in is optional. A signed-out Mac offers a five-minute `pc1` QR/copy code with
+its private IPv4 address, port and a random secret. Android can scan or enter it without
+an account, saves it in its existing encrypted pairing store, and uses only `LanTransport`.
+No Firebase pairing claim, mailbox, session negotiation or address discovery is used.
+Local-network permission is required on Android 17 for these pairs; notification access
+is still required. Both devices must be reachable on the same LAN. A changed Mac address
+requires pairing again; there is no cloud fallback for a local-only pair.
+
+Local pairing remains local after either device signs in, including across restarts.
+To enable cloud fallback, unpair and pair again after signing in on both devices.
+Signing out preserves a local-only pair; signing out of a cloud pair removes that pair.
+
+## Automatic local switching
+
+After a cloud snapshot completes, the Mac sends `local_endpoint` with up to eight private
+IPv4 addresses and its TCP port inside the encrypted Firebase mailbox. No database rules
+or server changes are needed. The Mac listens on port 47831; Android probes only validated
+private addresses, using the existing pairing secret and fresh mutual-authentication nonces.
+The cloud route remains usable while the phone probes. A failed probe tries the next address,
+then retries the list after 30 seconds. The Mac checks changed addresses every 15 seconds
+while on cloud and advertises changes.
+
+After local authentication, both sides discard the cloud route, detach control/mailbox
+listeners and reconcile a fresh snapshot without replaying alerts. Mac session rotation
+stops and the old mailbox is deleted; Android calls `goOffline()` and purges pending writes.
+Notifications, rich assets, actions, replies, battery state and heartbeats then travel only
+over the local connection. There are no periodic Firebase discovery writes while local.
+Google sign-in and explicit account/pairing operations can still use the internet.
+
+A local socket failure or 45-second idle timeout resumes Firebase with a fresh session and
+snapshot. The phone receives current Mac addresses again; if none is reachable it continues
+over Firebase. Cached addresses remain only in memory and are retried while cloud reconnects,
+so a temporary internet outage does not prevent reconnecting to the same local address.
+No queued frames or commands are copied between transports. Pending commands can become
+unconfirmed during handover and are never automatically replayed.
+
+Android 17 requires optional local-network permission; denial retains Firebase delivery.
+The setup screen offers **Allow local network** without blocking cloud use. macOS uses its
+existing local-network usage description and system privacy controls. Blocked LAN access
+falls back to cloud. IPv6-only LANs use Firebase. Deploy both updated apps together because
+older Android versions do not recognize the discovery message.
+Unpairing stops local delivery; deletion initiated by the other device is observed when
+Firebase reconnects, since control listeners are suspended during local operation.
 
 ## Project and client configuration
 
@@ -152,3 +197,10 @@ ignores errors from superseded requests. Mac mailbox shutdown cancels IO without
 the URLSession while an authentication-token provider is suspended. Regression checks cover
 both races. Updated apps were installed without clearing pairing; the agent observed live
 notifications, battery status and a sustained Connected state on the physical Mac/phone.
+
+Automatic-switching verification (October 30, 2026): Android debug build, unit tests and lint,
+and Mac debug build and core/Firebase checks pass. Deterministic route tests cover probing
+without interruption, local-only delivery, cloud fallback, stale callbacks, permission denial,
+address refresh, retry cancellation and revocation. No physical Android device was available
+for this change; verify LAN → cloud → LAN, DHCP changes, permission denial, sleep/wake, actions
+and confirmed dismissal on both devices before treating automatic switching as device-verified.

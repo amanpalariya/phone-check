@@ -4,6 +4,8 @@ import Network
 import UserNotifications
 import PhoneCheckCore
 
+enum ConnectionRoute { case local, cloud }
+
 final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     @Published private(set) var status = "Not paired"
     @Published private(set) var notices: [Notice] = []
@@ -13,6 +15,8 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     var phoneIdentifier: String? { credentials?.peer }
     @Published private(set) var paired = false
     @Published private(set) var connected = false
+    @Published private(set) var connectionRoute: ConnectionRoute?
+    @Published private(set) var backgroundSyncActive = false
     @Published private(set) var listening = false
     @Published private(set) var pairing = false
     @Published private(set) var addresses: [String] = []
@@ -20,16 +24,22 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     @Published private(set) var alertsAllowed = false
     @Published private(set) var error: String?
     private var credentials: Credentials?
+    private let localPort: UInt16
     private var listener: NWListener?
     private var candidates: [UUID: FramedConnection] = [:]
     private var active: (any NotificationConnection)?
     private var usesLocalNetwork = false
     private var cloud: CloudSync?
+    private var cloudPausedForLocal = false
+    private var sleeping = false
+    private var advertisedAddresses: [String]?
     private var state = ActiveState()
     private var phoneAttention = PhoneAttentionState()
     private var staged: [Notice]?
     private var stagedBytes = 0
     @Published private(set) var pairingExpiresAt: Date?
+    private var backgroundActivity: NSObjectProtocol?
+    private var listenerRetry: Timer?
     private var heartbeat: Timer?
     private var pairingTimer: Timer?
     private var syncDeadline: Timer?
@@ -40,7 +50,8 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         connected: { [weak self] in self?.connected == true },
         send: { [weak self] message in self?.active?.send(message) })
 
-    init(startServices: Bool = true, localNetworkForTesting: Bool = false) {
+    init(startServices: Bool = true, localNetworkForTesting: Bool = false, localPort: UInt16 = Wire.port) {
+        self.localPort = localPort
         usesLocalNetwork = localNetworkForTesting
         super.init()
         guard startServices else { return }
@@ -56,13 +67,15 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             status = paired ? "Disconnected" : "Not paired"
         } catch { self.error = "Pairing storage unavailable" }
         refreshAuthorization()
-        if usesLocalNetwork { startListening() }
+        if localNetworkForTesting { startListening() }
         else {
-            CloudAccount.shared.onChange = { [weak self] in self?.startCloud() }
-            startCloud()
+            CloudAccount.shared.onChange = { [weak self] in self?.accountChanged() }
+            accountChanged()
         }
         heartbeat = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-            self?.active?.send(Message("ping"))
+            guard let self, !self.sleeping else { return }
+            self.active?.send(Message("ping"))
+            self.advertiseLocalEndpoint()
         }
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
@@ -91,31 +104,66 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
            case let project = CloudAccount.shared.projectID, !project.isEmpty {
             return "pc2|\(project)|\(owner)|\(pairID)|\(secret)"
         }
-        return "pc1|\(host)|\(Wire.port)|\(secret)"
+        return "pc1|\(host)|\(localPort)|\(secret)"
+    }
+    private func accountChanged() {
+        defer { updateBackgroundActivity() }
+        // A local pair remains local when the user later signs in. Upgrading requires pairing again.
+        if let credentials, credentials.ownerUID == nil {
+            usesLocalNetwork = true
+            if active == nil { startLocalListener() }
+            return
+        }
+        usesLocalNetwork = credentials == nil && !CloudAccount.shared.signedIn
+        if usesLocalNetwork {
+            status = "Not paired"
+            startLocalListener()
+        } else { startCloud() }
     }
     func startListening() {
-        if !usesLocalNetwork { startCloud(); return }
-        guard usesLocalNetwork, listener == nil else { return }
+        if usesLocalNetwork { startLocalListener() } else { startCloud() }
+    }
+    private func startLocalListener() {
+        guard !sleeping, listener == nil else { return }
+        listenerRetry?.invalidate(); listenerRetry = nil
         addresses = privateAddresses()
         if !addresses.contains(host) { host = addresses.first ?? "" }
         do {
-            let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: Wire.port)!)
+            let listener = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: localPort)!)
             self.listener = listener
             listener.stateUpdateHandler = { [weak self, weak listener] newState in
                 guard let self, self.listener === listener else { return }
                 switch newState {
-                case .ready: self.listening = true
+                case .ready:
+                    if self.error == "Local connection unavailable" || self.error == "Port unavailable" { self.error = nil }
+                    if self.usesLocalNetwork { self.listening = true }
+                    self.advertiseLocalEndpoint()
                 case .failed:
-                    self.listening = false; self.error = "Local connection unavailable"
+                    if self.usesLocalNetwork { self.listening = false; self.error = "Local connection unavailable" }
                     self.listener?.cancel(); self.listener = nil
+                    self.retryLocalListener()
                 default: break
                 }
             }
             listener.newConnectionHandler = { [weak self] connection in self?.accept(connection) }
             listener.start(queue: .main)
-        } catch { self.error = "Port unavailable" }
+        } catch { self.error = "Port unavailable"; retryLocalListener() }
+    }
+    private func retryLocalListener() {
+        guard !sleeping, listenerRetry == nil else { return }
+        listenerRetry = Timer.scheduledTimer(withTimeInterval: 5, repeats: false) { [weak self] _ in
+            self?.listenerRetry = nil
+            self?.startLocalListener()
+        }
     }
     func beginPairing() {
+        defer { updateBackgroundActivity() }
+        if !CloudAccount.shared.signedIn {
+            usesLocalNetwork = true
+            cloud?.stop(); cloud = nil
+            if listener?.state == .ready { listening = true }
+            else { startLocalListener() }
+        }
         if !usesLocalNetwork { beginCloudPairing(); return }
         guard !paired, listening else { return }
         addresses = privateAddresses()
@@ -134,6 +182,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         } catch { self.error = "Could not save pairing" }
     }
     func cancelPairing() {
+        defer { updateBackgroundActivity() }
         if !usesLocalNetwork && !paired {
             cloud?.stop(); cloud = nil
             CloudAccount.shared.root?.removeValue()
@@ -146,6 +195,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         }
     }
     func signOut() {
+        if credentials?.ownerUID == nil { CloudAccount.shared.signOut(); return }
         guard let root = CloudAccount.shared.root else { CloudAccount.shared.signOut(); return }
         root.removeValue { [weak self] failure, _ in
             guard let self else { return }
@@ -154,6 +204,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         }
     }
     func unpair() {
+        defer { updateBackgroundActivity() }
         if !usesLocalNetwork, let root = CloudAccount.shared.root {
             root.removeValue { [weak self] failure, _ in
                 guard let self else { return }
@@ -167,17 +218,23 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         pairingTimer?.invalidate()
         active?.close(); Array(candidates.values).forEach { $0.close() }
         clearActive(); status = "Not paired"; error = nil
-        startListening()
+        accountChanged()
     }
     private func clearCloudPairing() {
+        defer { updateBackgroundActivity() }
+        cloudPausedForLocal = false
         cloud?.stop(); cloud = nil; active?.close(); active = nil; clearActive()
         do { try Credentials.clear() } catch { self.error = "Could not clear pairing"; return }
         credentials = nil; paired = false; pairing = false; phoneName = nil
         pairingExpiresAt = nil; pairingTimer?.invalidate(); status = "Not paired"
     }
     private func startCloud() {
-        guard !usesLocalNetwork else { return }
-        cloud?.stop(); cloud = nil; active?.close(); active = nil; clearActive()
+        defer { updateBackgroundActivity() }
+        guard !sleeping, !usesLocalNetwork else { return }
+        cloudPausedForLocal = false
+        cloud?.stop(); cloud = nil
+        let previous = active; active = nil; previous?.close(); clearActive()
+        advertisedAddresses = nil
         listening = CloudAccount.shared.signedIn
         guard let uid = CloudAccount.shared.uid, let root = CloudAccount.shared.root else {
             paired = false; status = "Sign in to connect"; return
@@ -191,13 +248,18 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             guard let self else { return false }
             do { try next.save() } catch { self.error = "Could not save pairing"; return false }
             self.credentials = next; self.paired = true; self.pairing = false
+            self.updateBackgroundActivity()
             self.pairingExpiresAt = nil; self.pairingTimer?.invalidate(); self.error = nil
             return true
         }
-        sync.onConnect = { [weak self] connection in self?.connect(using: connection) }
+        sync.onConnect = { [weak self] connection in
+            guard let self, !self.cloudPausedForLocal else { connection.close(); return }
+            self.connect(using: connection)
+        }
         sync.onRevoke = { [weak self] in self?.clearCloudPairing() }
         sync.onError = { [weak self] text in self?.active?.close(); self?.error = text }
         cloud = sync; sync.start()
+        startLocalListener()
     }
     private func beginCloudPairing() {
         guard !paired, let uid = CloudAccount.shared.uid, let root = CloudAccount.shared.root else { return }
@@ -226,7 +288,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         }
     }
     private func accept(_ connection: NWConnection) {
-        guard candidates.count < 4, let credentials,
+        guard !sleeping, candidates.count < 4, let credentials,
               credentials.peer != nil || (pairing && (pairingExpiresAt ?? .distantPast) > Date()) else { connection.cancel(); return }
         let id = UUID(), serverNonce = Wire.random()
         let client = FramedConnection(connection)
@@ -237,6 +299,10 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             self.candidates.removeValue(forKey: id)
             if let client, self.active === client {
                 self.active = nil; self.clearActive(); self.status = self.paired ? "Disconnected" : "Not paired"
+                if self.cloudPausedForLocal && !self.sleeping {
+                    self.cloudPausedForLocal = false
+                    self.startCloud()
+                }
             }
         }
         client.onMessage = { [weak self, weak client] message in
@@ -257,10 +323,16 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
                 var saved = current; saved.peer = peer
                 try saved.save(); self.credentials = saved
             } catch { self.error = "Could not save pairing"; client.close(); return }
-            self.active?.close(); self.clearActive()
+            // Detach the cloud callbacks before committing the authenticated local route.
+            let previous = self.active; self.active = nil; previous?.close(); self.clearActive()
+            if !self.usesLocalNetwork {
+                self.cloudPausedForLocal = true
+                self.cloud?.stop()
+            }
             self.active = client; authenticated = true
             self.paired = true; self.pairing = false; self.pairingExpiresAt = nil; self.pairingTimer?.invalidate()
             self.status = "Syncing…"; self.error = nil
+            self.updateBackgroundActivity()
             var ready = Message("ready")
             ready.proof = Wire.derive(current.secret, label: "server-proof", material: material).base64EncodedString()
             client.send(ready)
@@ -275,9 +347,10 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     /// Cloud provisioning supplies an authenticated session after explicit pairing.
     /// The same snapshot, validation, commands and alert policy serve every transport.
     func connect(using connection: any NotificationConnection) {
+        guard !sleeping else { connection.close(); return }
         guard paired else { connection.close(); error = "Pair a phone first"; return }
-        usesLocalNetwork = false
-        listener?.cancel(); listener = nil; listening = true
+        listening = true
+        advertisedAddresses = nil
         active?.close(); Array(candidates.values).forEach { $0.close() }
         clearActive(); active = connection; status = "Syncing…"
         connection.onMessage = { [weak self, weak connection] message in
@@ -362,7 +435,21 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     private func completeSnapshot(_ items: [Notice]) {
         state.snapshot(items); staged = nil; stagedBytes = 0
         syncDeadline?.invalidate(); syncDeadline = nil
-        connected = true; status = "Connected"; publish()
+        connected = true; connectionRoute = active is FirebaseConnection ? .cloud : .local
+        status = "Connected"; error = nil; publish()
+        advertiseLocalEndpoint()
+    }
+    /// Addresses travel inside the encrypted cloud channel, with no database schema changes.
+    /// Refresh while on cloud so DHCP/interface changes are discovered without restarting.
+    private func advertiseLocalEndpoint() {
+        guard !usesLocalNetwork, !sleeping, connected, active is FirebaseConnection else { return }
+        if listener == nil { startLocalListener() }
+        guard listener?.state == .ready else { return }
+        let hosts = Array(privateAddresses().prefix(8))
+        guard !hosts.isEmpty, hosts != advertisedAddresses else { return }
+        advertisedAddresses = hosts
+        var endpoint = Message("local_endpoint"); endpoint.hosts = hosts; endpoint.port = Int(localPort)
+        active?.send(endpoint)
     }
     private func validNotice(_ item: Notice) -> Bool {
         guard !item.key.isEmpty, item.key.utf8.count <= 4096, item.app.count <= 256, item.title.count <= 2048,
@@ -390,7 +477,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         alerts.register(notices)
     }
     private func clearActive() {
-        connected = false; battery = nil; state.reset(); phoneAttention = PhoneAttentionState()
+        connected = false; connectionRoute = nil; battery = nil; state.reset(); phoneAttention = PhoneAttentionState()
         notices = []; staged = nil; stagedBytes = 0
         commands.reset(); alerts.register([])
         syncDeadline?.invalidate(); syncDeadline = nil
@@ -458,10 +545,39 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             } else { commands.perform(item, action: action, text: text) }
         }
     }
+    /// Keep live user-requested mirroring out of App Nap without preventing system sleep.
+    private func updateBackgroundActivity() {
+        let needed = !sleeping && (paired || pairing) && (usesLocalNetwork || CloudAccount.shared.signedIn)
+        if needed && backgroundActivity == nil {
+            backgroundActivity = ProcessInfo.processInfo.beginActivity(
+                options: .userInitiatedAllowingIdleSystemSleep, reason: "Mirror phone notifications")
+        } else if !needed, let activity = backgroundActivity {
+            ProcessInfo.processInfo.endActivity(activity); backgroundActivity = nil
+        }
+        backgroundSyncActive = backgroundActivity != nil
+    }
     @objc private func willSleep() {
+        sleeping = true
+        updateBackgroundActivity()
+        listenerRetry?.invalidate(); listenerRetry = nil
+        listener?.cancel(); listener = nil; listening = false
+        advertisedAddresses = nil
         active?.close(); Array(candidates.values).forEach { $0.close() }
+        clearActive()
         if pairing { cancelPairing() }
         cloud?.stop()
     }
-    @objc private func didWake() { startListening(); refreshAuthorization() }
+    @objc private func didWake() {
+        sleeping = false
+        if usesLocalNetwork { startListening() } else { startCloud() }
+        updateBackgroundActivity()
+        refreshAuthorization()
+    }
+
+    deinit {
+        heartbeat?.invalidate(); listenerRetry?.invalidate()
+        pairingTimer?.invalidate(); syncDeadline?.invalidate()
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        if let activity = backgroundActivity { ProcessInfo.processInfo.endActivity(activity) }
+    }
 }

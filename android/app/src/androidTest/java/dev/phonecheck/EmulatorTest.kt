@@ -26,6 +26,9 @@ class PermissionUiTest {
         onMain { PairingStore(target).clear(); BridgeState.paired = false }
         val device = UiDevice.getInstance(instrumentation)
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            assertNull(CloudAccount.auth.currentUser)
+            assertTrue(device.wait(Until.hasObject(By.text("Scan QR code")), 10000))
+            device.findObject(By.text("Enter code instead")).click()
             assertTrue(device.wait(Until.hasObject(By.text("Pair Mac")), 10000))
             assertTrue(device.hasObject(By.text("Mac pairing code")))
             device.takeScreenshot(File(target.filesDir, "pairing-screen.png"))
@@ -56,6 +59,24 @@ class NotificationFlowTest {
         onMain { assertNotNull(PairingStore(target).load()); BridgeState.service!!.restart() }
         waitFor("authenticated snapshot") { host().getBoolean("connected") }
         assertTrue(host().getBoolean("paired"))
+
+        // Keep the activity off-screen and the display off for post/update/dismiss.
+        val device = UiDevice.getInstance(instrumentation)
+        device.pressHome()
+        device.sleep()
+        try {
+            assertFalse(target.getSystemService(android.os.PowerManager::class.java).isInteractive)
+            post(9, "ScreenOff")
+            waitFor("screen-off post mirrored") { titles() == listOf("ScreenOff") }
+            post(9, "ScreenOffUpdated")
+            waitFor("screen-off update mirrored") { titles() == listOf("ScreenOffUpdated") }
+            host("dismiss", "ScreenOffUpdated")
+            waitFor("screen-off dismissal confirmed") { titles().isEmpty() && host().getInt("pending") == 0 }
+        } finally {
+            clear(9)
+            device.wakeUp()
+            shell("wm dismiss-keyguard")
+        }
 
         post(1, "Alpha")
         waitFor("post mirrored") { titles() == listOf("Alpha") }

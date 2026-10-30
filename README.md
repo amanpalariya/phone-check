@@ -1,14 +1,19 @@
 # Phone Check
 
-Android notification mirroring, actions, replies, dismissal, and phone battery/charging/Battery Saver status, with a native macOS menu-bar companion. Both apps are in this repository. One phone, one Mac, connected through Firebase with Google sign-in and explicit encrypted pairing.
+Android notification mirroring, actions, replies, dismissal, and phone battery/charging/Battery Saver status, with a native macOS menu-bar companion. Both apps are in this repository. One phone, one Mac, with explicit encrypted pairing and optional Google sign-in.
 
-Firebase Realtime Database is the only selected transport. The LAN implementation stays in source for a future settings option; it is not started by the apps. The project uses Spark, with pairing and session authorization implemented through database rules and device-held encryption secrets. See [Firebase setup and architecture](firebase/README.md).
+Without signing in, pair directly on the same local network. For signed-in pairs, Firebase Realtime Database handles pairing and initial address discovery. The apps automatically switch to an authenticated, encrypted local connection when reachable, stop Firebase sync while local, and fall back to Firebase when the local link fails. The project uses Spark, with pairing and session authorization implemented through database rules and device-held encryption secrets. See [Firebase setup and architecture](firebase/README.md).
 
 - `android/`: Kotlin, Compose, Material 3; Android 11+. System dynamic color on Android 12+, Material purple fallback on older versions.
 - `macos/`: SwiftUI, Network, CryptoKit, UserNotifications; macOS 14+. Native Liquid Glass on macOS 26+, standard-material fallback on older versions.
 - `protocol/`: wire format, authentication, and sync rules.
 
 ## Build
+
+The shared icon artwork is `assets/app-icon.png`. After replacing it, run
+`swift scripts/make-app-icons.swift` from the repository root to regenerate the
+Mac icon and Android adaptive foreground. Android also has a simplified vector
+for system-themed icons.
 
 Supply the gitignored `android/app/google-services.json` and `macos/GoogleService-Info.plist` from Firebase project settings, including Google OAuth client IDs and the database URL. The Mac also needs `macos/GoogleOAuthClient.json`, downloaded for the project's Desktop OAuth client.
 
@@ -96,12 +101,14 @@ swiftc -parse-as-library macos/Sources/PhoneCheck/PairingQRCode.swift tests/ui/P
 
 ## Pair
 
-1. Sign in with the same Google account on both devices. Click the Mac menu-bar icon and choose **Pair phone**; its QR countdown shows when the code expires.
-2. Tap **Scan QR code** in the Android app and scan the Mac’s QR code within five minutes. Or choose **Enter code instead** on Android and **Copy code** on Mac. Both devices need internet access and can use different networks.
-3. Grant Android notification access. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
+1. For local-only sync, leave the Mac signed out and connect both devices to the same network. For cloud fallback, sign in with the same Google account on both devices before pairing. Click the Mac menu-bar icon and choose **Pair phone**; the code expires in five minutes.
+2. Tap **Scan QR code** on Android, or use **Enter code instead** and **Copy code** on Mac. Local pairing needs no account or internet connection; cloud pairing can use different networks.
+3. Grant Android notification access and local-network access for local-only pairs. Sideloaded builds may require **Allow restricted settings** in Android app settings before notification access can be enabled.
 4. Enable Mac notifications in **Settings → General**. Settings on both apps includes the Google account and device connection, with explicit sign-out/unpair confirmations. Development builds also include **Advanced** with the notification testbed.
 
 Scanning uses [Google code scanner](https://developers.google.com/ml-kit/vision/barcode-scanning/code-scanner), which processes images on-device without granting Phone Check camera access. It requires Google Play services and may need an initial scanner download; manual entry works without it. The QR code contains the same temporary pairing secret as the copied code and expires or is canceled with it.
+
+Sync is owned by Android's system-bound notification listener and continues when the app is in the background or its display is off. The listener recovers automatically when networking returns or Doze ends. Android's system/OEM power restrictions can still defer network access. No additional background settings are added. The Mac stays available while running with its pane closed, pauses syncing during system sleep, and establishes a fresh session after waking. A Wi-Fi or cloud icon beside the Mac settings control shows the active connection; a slashed icon indicates it is disconnected.
 
 Existing phone notifications appear silently in the companion on each connection. Only live, changed notifications produce system alerts. While the phone screen is on and unlocked, notifications still sync but Mac banners are suppressed; locking the phone does not replay them. **Dismiss on phone** waits for phone confirmation. Clearing or timing out a Mac banner never dismisses the phone notification.
 
@@ -122,6 +129,13 @@ Android can restrict background activity launches, locked-device actions, redact
 Android's bridge coordinates capture, asset conversion, command handling and a transport interface. Mac's companion coordinates active sync, a command controller, native alert delivery and SwiftUI rows. Models and cryptography live in PhoneCheckCore. Testbed fixtures are separate from production capture/dispatch logic. Active content and reply drafts stay in memory; there is no notification history.
 
 ## Verification
+
+`./tests/local/check-unsigned-local.sh` exercises signed-out pairing and encrypted TCP sync
+against the production Mac companion with a simulated phone on loopback. It uses an isolated
+app identity and no cloud configuration on isolated port 47833. Add `--lifecycle-only`
+to check sleep/wake, route state and background activity using a simulated transport. This does not replace
+physical Android verification.
+
 
 Run the [emulator integration suite](tests/emulator/README.md) to exercise the real Android listener against the Mac companion code. See [VALIDATION.md](VALIDATION.md) for checks actually run and the remaining physical-device checklist. Active notification text is kept in memory only; pairing material lives in macOS Keychain for release builds, the owner-only local file described above for Mac development builds, and Android Keystore-encrypted private preferences. Android backup and transfer exclude those preferences. No notification bodies or credentials are logged.
 

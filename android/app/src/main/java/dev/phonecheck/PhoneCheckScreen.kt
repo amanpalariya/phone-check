@@ -42,6 +42,7 @@ internal fun PhoneCheckScreen(
     onSignIn: () -> Unit = {},
     onSignOut: () -> Unit = {},
     paired: Boolean,
+    localOnly: Boolean = false,
     access: Boolean,
     network: Boolean,
     networkBlocked: Boolean,
@@ -65,28 +66,29 @@ internal fun PhoneCheckScreen(
     }
     var confirmUnpair by remember { mutableStateOf(false) }
     var manualPairing by rememberSaveable { mutableStateOf(false) }
-    val connected = paired && access && network && status == "Connected"
+    val connected = paired && access && status == "Connected"
     val symbol = when {
         !paired -> R.drawable.ic_laptop
         !access -> R.drawable.ic_bell
-        !network -> R.drawable.ic_wifi
         else -> R.drawable.ic_phone
     }
+    val needsSignIn = paired && !localOnly && !signedIn
     val heading = when {
-        !signedIn -> "Connect your devices"
+        needsSignIn -> "Sign in to connect"
         !paired -> "Pair your Mac"
         !access -> "Notification access"
-        !network -> "Connect over Wi-Fi"
+        localOnly && !network -> "Local network access"
         connected -> "Connected"
         status.contains("Disconnected") -> "Reconnecting"
         else -> "Connecting"
     }
     val detail = when {
-        !signedIn -> "Use the same Google account on your Mac."
+        needsSignIn -> "Use the same Google account on your Mac."
         !paired -> "Scan the QR code in Phone Check on your Mac."
         !access -> "Mirror notifications and use their actions on your Mac."
-        !network -> "Allow access to your Mac on the local network."
+        localOnly && !network -> "Allow access to your Mac on the local network."
         connected -> "Notifications appear on your Mac."
+        localOnly -> "Connect both devices to the same network."
         else -> "Make sure both devices are online."
     }
 
@@ -130,7 +132,7 @@ internal fun PhoneCheckScreen(
                         modifier = Modifier.padding(top = 10.dp).widthIn(max = 290.dp))
                 }
 
-                if (!signedIn) {
+                if (needsSignIn) {
                     PrimaryButton(if (signingIn) "Signing in…" else "Sign in with Google", enabled = !signingIn, onClick = onSignIn)
                 } else if (!paired) {
                     if (!manualPairing) {
@@ -151,10 +153,24 @@ internal fun PhoneCheckScreen(
                     }
                 } else if (!access) {
                     PrimaryButton("Allow notification access", onClick = onNotificationAccess)
-                } else if (!network) {
+                } else if (localOnly && !network) {
                     PrimaryButton(if (networkBlocked) "Open settings" else "Allow local network", onClick = onNetworkAccess)
                 } else if (!listenerReady) {
                     PrimaryButton("Reconnect", onClick = onReconnect)
+                }
+                if (!signedIn && !paired) {
+                    TextButton(onClick = onSignIn, enabled = !signingIn,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(if (signingIn) "Signing in…" else "Sign in for cloud sync")
+                    }
+                }
+                if (paired && !localOnly && access && !network) {
+                    TextButton(onClick = onNetworkAccess, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(if (networkBlocked) "Local network settings" else "Allow local network")
+                    }
+                    Text("Use Wi-Fi nearby to save cloud data.", style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.CenterHorizontally))
                 }
                 error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium,

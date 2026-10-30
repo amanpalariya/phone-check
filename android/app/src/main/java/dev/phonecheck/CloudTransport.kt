@@ -111,6 +111,7 @@ internal class CloudTransport(
         if (closed || root == null) return
         requestID = UUID.randomUUID().toString(); usedSessions.clear()
         val proof = Wire.b64(Wire.derive(pairing.secret, "cloud-request", "$requestID|${pairing.peer}".toByteArray()))
+        reconnect.awaitingOffer()
         val attempt = requestID
         root.child("control/request").setValue(mapOf("id" to requestID, "peer" to pairing.peer, "proof" to proof)) { error, _ ->
             if (!closed && error != null && requestID == attempt && active == null) {
