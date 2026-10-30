@@ -455,6 +455,57 @@ Additional device checks:
   No Android device is attached. Physical screen-off/deep-idle behavior, real Mac sleep/wake,
   cloud/local handover and live icon appearance still require device verification.
 
+
+## Preserve Android connection across app reopening — October 30, 2026
+
+- Found unconditional transport restarts in activity resume and the activity's initial
+  Firebase auth callback. Merely reopening the app replaced a healthy session.
+- Activity and auth refreshes now preserve the existing transport when pairing, effective
+  account and local permission are unchanged. Explicit Reconnect still replaces the session.
+  Pairing comparisons use secret byte contents so a Keystore reload does not look like re-pairing.
+  Actual configuration changes still stop and close the old transport before starting a new one.
+- Android debug build, all 34 unit tests and lint passed. Added emulator regression coverage
+  for activity resume/recreation without another Mac connection; instrumentation APK compiled.
+- Installed the update on the connected Samsung phone without clearing data. A 100-second
+  physical observation opened the app three times, backgrounded it twice, then left the
+  display off for approximately 66 seconds. The same TCP session and Android process survived
+  throughout, with no session changes. Battery Saver remained enabled; the phone was charging.
+- Earlier observations were interrupted by package updates and instrumentation force-stops
+  from concurrent media testing, confirmed by Android's process-exit records. Those observations
+  cannot establish the cause of the originally reported display-off drop. This check does not
+  cover unplugged deep Doze, long-duration idle, or vendor process termination.
+
+## Menu-bar previews — October 30, 2026
+
+- Replaced menu-bar counts with a template outline of the app artwork and an unchecked-change dot. Opening the pane acknowledges changes; background previews do not. Media, represented summaries, unchanged revisions, and reconnect snapshots do not introduce unchecked changes.
+- Replaced native Notification Center delivery with a non-key preview beneath the status item. Audible channel metadata comes from Android listener ranking; missing sound metadata mirrors silently. Only-alert-once updates and group-alert suppression are respected. Six-second previews pause while hovered; closing/timeouts never send phone commands.
+- Focus status must be authorized and explicitly off before showing previews. A visible preview closes on Focus activation/unknown status, phone use, removal, replacement, disconnect, sleep, or opening the pane. Focus permission is requested using the Enable action in the pane/settings. Actual permission approval and Focus toggling on the user's signed app remain unverified.
+- Passed: Android `:app:assembleDebug :app:testDebugUnitTest :app:lintDebug`; Swift core checks (13) and Firebase/device-state check groups (10); packaged Mac build; UI pane checks; preview lifecycle checks using an injected Focus state (suppression, activation while visible, non-key presentation, stale content/removal cleanup, timeout, and no status-button count).
+- Rendered the icon and light/dark preview fixture; the outline/dot geometry is readable. Offscreen AppKit caching does not reproduce Liquid Glass correctly, so this is not a claim of on-screen material validation.
+- Physical phone delivery, real Focus authorization/transitions, pointer hover, and screen-reader behavior have not been newly verified. The old optional native-alert smoke path tests retired Notification Center behavior; use the menu-bar preview UI checks for this presentation.
+
+### Preview testbed follow-up — October 30, 2026
+
+- Immediate phone testbed posts occur while the phone is in use, which intentionally suppresses Mac previews. Reposting an active sample also respects its only-alert-once flag. Added **Post preview in 7s**: remove the previous synthetic Basic sample, then post afresh after the user has time to lock the phone. Clear and activity destruction cancel the pending post.
+- Added content-free Mac preview diagnostics for phone use, silent/unknown sound metadata, only-alert-once updates, unavailable anchor/open list, Focus authorization/status, and actual presentation. No notification text, identities, keys, or credentials are recorded.
+- Android debug build/lint and packaged Mac build passed; updated both installed apps. End-to-end result of the new delayed sample is pending user testing.
+
+## DND-aware preview stack — October 30, 2026
+
+- Android now checks `Ranking.matchesInterruptionFilter()` before marking a notification audible. Android resolves app, conversation, and channel exceptions; no allowlist/policy parsing or DND settings changes are introduced. The existing sound, importance, grouping, and only-alert-once checks still apply.
+- Preview cards use the same `NotificationPreview`, `NotificationCard`, row width/padding, and `NotificationPaneSurface` blur/dark wash as the regular list. Removed per-card outer vertical padding so stack spacing matches normal rows.
+- One small shared up-arrow button hides the entire stack with an upward animation. Hiding and automatic expiry send no phone commands. Each hover cross uses the existing confirmed phone-dismissal command; pending results keep that card alive. Non-dismissible cards have no cross. Reduced Motion uses a fade.
+- Up to three cards appear together; larger bursts retain an overflow link to the complete list. Keys update without duplicates. Each entry has its own six-second deadline (paused while hovered); overflow uses its original deadline rather than queuing old alerts.
+- Mac Settings → Advanced → Notification testbed now has **Send preview** and **Send 3**. These exercise the production preview renderer with simulated commands and a clearly labelled Focus bypass. The Android testbed has not gained a burst control.
+- Passed Android debug build, unit tests, and lint; Mac build; preview lifecycle/burst checks and testbed checks. The installed Mac testbed's Send 3 was invoked through native UI and emitted three preview presentations. Physical Android DND exceptions and real trackpad/VoiceOver testing are not claimed. The shared up-arrow replaces the originally interpreted physical swipe interaction.
+
+## Preview expansion and pane transition — October 30, 2026
+
+- Preview content has a separate click target from its chevron. Previews now reuse `RichNoticeRow`, so expansion/collapse, original actions, reply controls, and dismissal stay inside the floating surface. Expansion state is owned by the stack and survives resizing/replacement of the scroll host.
+- Expanded content scrolls within the display's available height. The card stack and its backdrop resize together; the shared hide arrow remains beneath it. Reply editing keeps its notification alive. Arrival still orders the panel without making it key; explicit editor interaction can accept keyboard focus.
+- Clicking content crossfades the preview stack into the full pane at the same menu-bar anchor over 0.22 seconds (0.12 with Reduced Motion). This transition does not run the upward hide animation. Existing revision guards protect a pane reopened while closing.
+- Passed packaged Mac build and preview/testbed checks, including local expansion without invoking the content-open callback, increased backdrop height, expansion surviving host updates, and the stationary preview fade into an animated pane. Native UI testing in the synthetic preview fixture confirmed Expand → expanded conversation/reply controls → Collapse, without opening the full pane. Installed and relaunched the updated Mac app. No new Android device verification was performed for this Mac-only change.
+
 ## Compact Android settings — October 30, 2026
 
 - General now contains the app icon/version and compact Google account/Mac rows. Removed separate Account/Devices pages; sign-out and unpair retain their confirmation dialogs. Notification access appears only while missing; paired devices also expose missing local-network access inline. Encryption copy and the development-only Advanced/testbed entry remain.

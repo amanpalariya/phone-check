@@ -87,8 +87,8 @@ private struct GeneralSettingsView: View {
                     HStack(spacing: 14) {
                         SettingsSymbol(name: "bell.badge", color: .orange)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Mac notifications").font(.body.weight(.medium))
-                            Text("Allow alerts for new phone notifications.")
+                            Text("Notification previews").font(.body.weight(.medium))
+                            Text("Allow Focus access to show previews when Focus is off.")
                                 .font(.callout).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 12)

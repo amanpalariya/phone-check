@@ -60,6 +60,16 @@ class NotificationFlowTest {
         waitFor("authenticated snapshot") { host().getBoolean("connected") }
         assertTrue(host().getBoolean("paired"))
 
+        val connectionsBeforeOpening = host().getInt("connections")
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+            scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+            scenario.recreate()
+            SystemClock.sleep(1500)
+            assertTrue(host().getBoolean("connected"))
+            assertEquals("Reopening keeps the existing session", connectionsBeforeOpening, host().getInt("connections"))
+        }
+
         // Keep the activity off-screen and the display off for post/update/dismiss.
         val device = UiDevice.getInstance(instrumentation)
         device.pressHome()

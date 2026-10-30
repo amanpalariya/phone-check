@@ -28,7 +28,7 @@ python3 tests/emulator/run.py --serial emulator-5554
 
 `--skip-build` reuses existing APKs and the Mac test-host bundle. The runner installs the main app, its instrumentation APK, and `notification-fixture`, a separate test-only notification producer. The fixture receiver requires shell's `DUMP` permission and is never included in the main APK.
 
-Add `--native-alerts` to request notification authorization for the isolated Mac test app and check real native delivery, image attachments, registered reply/action categories, and cleanup. Authorization is a system permission; if it is not granted, that optional check reports a skip. `--suite RichNotificationTest` selects the rich interaction suite.
+The former `--native-alerts` smoke path targets retired macOS Notification Center behavior and is no longer applicable. For custom preview lifecycle checks, run `bash tests/ui/build-mac-review.sh` followed by `macos/build/PhoneCheckMaterialReview.app/Contents/MacOS/PhoneCheckMaterialReview --alert-checks`. These inject Focus state; real Focus permission/transitions still need device verification. `--suite RichNotificationTest` selects the rich interaction suite.
 
 ## Coverage
 

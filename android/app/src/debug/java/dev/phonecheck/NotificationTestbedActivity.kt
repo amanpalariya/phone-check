@@ -20,6 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 class NotificationTestbedActivity : ComponentActivity() {
+    private val previewHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var previewTask: Runnable? = null
+    private var previewScheduled by mutableStateOf(false)
     private var pending: (() -> Unit)? = null
     private var denied by mutableStateOf(false)
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -36,7 +39,7 @@ class NotificationTestbedActivity : ComponentActivity() {
                 Scaffold(topBar = {
                     TopAppBar(title = { Text("Notification testbed") },
                         navigationIcon = { TextButton(onClick = { finish() }) { Text("Back") } },
-                        actions = { TextButton(onClick = { TestNotifications.clear(this@NotificationTestbedActivity) }) { Text("Clear") } })
+                        actions = { TextButton(onClick = { cancelPreview(); TestNotifications.clear(this@NotificationTestbedActivity) }) { Text("Clear") } })
                 }) { padding ->
                     LazyColumn(Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(bottom = 24.dp)) {
                         item {
@@ -45,6 +48,11 @@ class NotificationTestbedActivity : ComponentActivity() {
                                 Text("Post on Android. Check appearance and actions on your Mac.", style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 FilledTonalButton(onClick = { postWithPermission { DemoScenario.entries.forEach { TestNotifications.post(this@NotificationTestbedActivity, it) } } }) { Text("Post all samples") }
+                                OutlinedButton(onClick = { postWithPermission { schedulePreview() } }, enabled = !previewScheduled) {
+                                    Text(if (previewScheduled) "Scheduled" else "Post preview in 7s")
+                                }
+                                Text("Lock your phone and close the Mac list before it arrives.", style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(TestbedState.lastReceipt, style = MaterialTheme.typography.bodyMedium)
                                 if (denied) {
                                     Text("Notifications are off", color = MaterialTheme.colorScheme.error)
@@ -71,6 +79,23 @@ class NotificationTestbedActivity : ComponentActivity() {
             }
         }
     }
+    private fun cancelPreview() {
+        previewTask?.let(previewHandler::removeCallbacks)
+        previewTask = null; previewScheduled = false
+    }
+    private fun schedulePreview() {
+        cancelPreview()
+        // Remove this synthetic sample first so ONLY_ALERT_ONCE cannot suppress the test.
+        getSystemService(NotificationManager::class.java).cancel(TestNotifications.TAG, DemoScenario.BASIC.number)
+        val context = applicationContext
+        previewScheduled = true
+        TestbedState.lastReceipt = "Preview scheduled. Lock your phone."
+        previewTask = Runnable {
+            previewTask = null; previewScheduled = false
+            safelyPost { TestNotifications.post(context, DemoScenario.BASIC) }
+        }.also { previewHandler.postDelayed(it, 7_000) }
+    }
+    override fun onDestroy() { cancelPreview(); super.onDestroy() }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); receiveTap(intent) }
     private fun receiveTap(intent: Intent) {
         if (intent.getStringExtra("operation") == "open") {

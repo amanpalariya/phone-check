@@ -16,6 +16,7 @@ struct NotificationCard: ViewModifier {
     let dismiss: () -> Void
     var surface = true
     var stackDepth = 0
+    var swipeToDismiss = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var presentation = CardPresentation()
     @FocusState private var closeFocused: Bool
@@ -66,7 +67,7 @@ struct NotificationCard: ViewModifier {
                 }
             }
             .background {
-                TrackpadDismissal(enabled: canDismiss, changed: { presentation.translation = $0 }, ended: finishSwipe)
+                TrackpadDismissal(enabled: canDismiss && swipeToDismiss, changed: { presentation.translation = $0 }, ended: finishSwipe)
             }
             .contentShape(Rectangle())
             .onHover { presentation.hovering = $0 }

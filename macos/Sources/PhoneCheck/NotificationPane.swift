@@ -11,7 +11,9 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private let model: Companion
     #if DEBUG
     private let testbed: NotificationTestbed
+    private let testbedToast = NotificationToastController(allowsPreview: { true })
     #endif
+    private let toast = NotificationToastController()
     private let statusItem: NSStatusItem
     private var panel: NotificationPanel?
     #if DEBUG
@@ -54,8 +56,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
                 button.action = #selector(toggle)
                 button.sendAction(on: [.leftMouseDown])
             }
-            button.imagePosition = .imageLeading
-            button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+            button.imagePosition = .imageOnly
         }
         #if DEBUG
         let changes = Publishers.Merge(model.objectWillChange, testbed.objectWillChange).eraseToAnyPublisher()
@@ -102,24 +103,46 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         windowItem.submenu = windowMenu
         menu.addItem(windowItem)
         NSApp.mainMenu = menu
+        model.previewEvents.sink { [weak self] notice in
+            guard let self else { return }
+            guard let notice else { toast.hide(); return }
+            guard presentation == .hidden,
+                  let button = statusItem.button, let window = button.window,
+                  let screen = window.screen else {
+                PreviewDiagnostics.record("Suppressed: notification list open or menu-bar anchor unavailable")
+                return
+            }
+            #if DEBUG
+            testbedToast.hide()
+            #endif
+            let anchor = window.convertToScreen(button.convert(button.bounds, to: nil))
+            toast.show(notice, anchor: anchor, screen: screen, commands: model.commands) { [weak self] in self?.show(animated: true) }
+        }.store(in: &subscriptions)
+        model.$notices.sink { [weak self] in self?.toast.reconcile($0) }.store(in: &subscriptions)
+        #if DEBUG
+        testbed.previewEvents.sink { [weak self] notices in
+            guard let self, let button = statusItem.button, let window = button.window, let screen = window.screen else { return }
+            hide()
+            toast.hide()
+            let anchor = window.convertToScreen(button.convert(button.bounds, to: nil))
+            for notice in notices {
+                testbedToast.show(notice, anchor: anchor, screen: screen, commands: testbed.commands) { [weak self] in
+                    self?.testbed.showsInPane = true
+                    self?.show(animated: true)
+                }
+            }
+        }.store(in: &subscriptions)
+        testbed.$notices.sink { [weak self] in self?.testbedToast.reconcile($0) }.store(in: &subscriptions)
+        #endif
         updateStatusItem()
     }
 
     private func updateStatusItem() {
         guard let button = statusItem.button else { return }
-        var count = model.notificationCount
-        var status = model.status
-        var showsCount = model.connected
-        #if DEBUG
-        if testbed.showsInPane {
-            count = NotificationSection.count(testbed.notices)
-            status = "Testbed"
-            showsCount = true
-        }
-        #endif
-        button.image = MenuBarIcon.image(hasNew: false)
-        button.title = showsCount ? " \(count)" : ""
-        button.setAccessibilityLabel("Phone Check, \(status), \(count) notifications")
+        let hasNew = model.paired && model.hasNewNotifications
+        button.image = MenuBarIcon.image(hasNew: hasNew)
+        button.title = ""
+        button.setAccessibilityLabel("Phone Check, \(model.status), \(hasNew ? "New notifications" : "No new notifications")")
         button.toolTip = "Phone Check"
     }
 
@@ -131,7 +154,18 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
         }
     }
 
-    func show() {
+    func show(animated: Bool = false) {
+        if animated {
+            toast.fadeOutForPane()
+            #if DEBUG
+            testbedToast.fadeOutForPane()
+            #endif
+        } else {
+            toast.hide()
+            #if DEBUG
+            testbedToast.hide()
+            #endif
+        }
         guard let screen = statusItem.button?.window?.screen ?? NSScreen.main else { return }
         let anchor = statusItem.button.flatMap { button in
             button.window?.convertToScreen(button.convert(button.bounds, to: nil))
@@ -163,10 +197,21 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
             panel.contentView = NotificationPaneSurface(frame: NSRect(origin: .zero, size: frame.size),
                                                        root: root(height: frame.height, pointerOffset: (anchor?.midX ?? frame.midX) - frame.midX))
         }
+        let fadeIn = animated && presentation != .visible
         presentationRevision += 1
         presentation = .visible
-        panel.alphaValue = 1
+        model.notificationsVisible = true
+        model.checkedNotifications()
+        updateStatusItem()
+        panel.alphaValue = fadeIn ? 0 : 1
         panel.makeKeyAndOrderFront(nil)
+        if fadeIn {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0.12 : 0.22
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                panel.animator().alphaValue = 1
+            }
+        }
         updateStatusHighlight()
         // Start with no search focus; Tab and clicking still enter native editors.
         panel.makeFirstResponder(panel.contentView)
@@ -209,6 +254,7 @@ final class NotificationPaneController: NSObject, NSWindowDelegate {
     private func closePane(animated: Bool) {
         guard presentation == .visible, let panel else { return }
         presentation = .closing
+        model.notificationsVisible = false
         presentationRevision += 1
         let revision = presentationRevision
         let finish = { [weak self, weak panel] in

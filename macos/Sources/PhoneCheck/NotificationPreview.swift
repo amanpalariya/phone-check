@@ -23,6 +23,7 @@ struct NoticeAppIcon: View {
 struct NotificationPreview<Trailing: View>: View {
     let notice: Notice
     var count: Int? = nil
+    var open: (() -> Void)? = nil
     @ViewBuilder let trailing: () -> Trailing
     @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 34
     private var preview: String {
@@ -32,6 +33,17 @@ struct NotificationPreview<Trailing: View>: View {
         return notice.lines?.first ?? notice.body
     }
     var body: some View {
+        HStack(spacing: 10) {
+            if let open {
+                Button(action: open) { previewContent.contentShape(Rectangle()) }
+                    .buttonStyle(.plain).accessibilityHint("Open notifications")
+            } else { previewContent }
+            trailing()
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(notice.app)
+    }
+    private var previewContent: some View {
         HStack(spacing: 10) {
             NoticeAppIcon(notice: notice, size: iconSize)
             VStack(alignment: .leading, spacing: 3) {
@@ -53,11 +65,9 @@ struct NotificationPreview<Trailing: View>: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .accessibilityLabel("Notification image")
             }
-            trailing()
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(notice.app)
     }
+
 }
 
 struct NotificationTime: View {

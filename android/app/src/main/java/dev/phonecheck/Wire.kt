@@ -53,6 +53,9 @@ internal class SessionCipher(private val key: ByteArray) {
 internal data class Pairing(val host: String, val port: Int, val secret: ByteArray, val peer: String,
     val ownerUID: String? = null, val pairID: String? = null) {
     val isLocalOnly: Boolean get() = ownerUID == null && pairID == null
+    // Keystore reloads create a new byte array; data-class equality compares its identity.
+    fun sameConnection(other: Pairing?): Boolean = other != null && host == other.host && port == other.port &&
+        peer == other.peer && ownerUID == other.ownerUID && pairID == other.pairID && secret.contentEquals(other.secret)
     fun json() = JSONObject().put("host", host).put("port", port)
         .put("secret", Wire.b64(secret)).put("peer", peer)
         .put("ownerUID", ownerUID).put("pairID", pairID)

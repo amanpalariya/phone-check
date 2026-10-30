@@ -1,6 +1,8 @@
 package dev.phonecheck
 
 import android.app.Notification
+import android.app.NotificationManager
+import android.service.notification.NotificationListenerService
 import android.app.PendingIntent
 import android.app.RemoteInput
 import android.content.Context
@@ -92,6 +94,8 @@ internal class NotificationCapture(
             ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString().orEmpty().take(8192)
         val json = JSONObject().put("key", sbn.key).put("app", app).put("packageName", sbn.packageName)
             .put("title", title).put("body", body).put("postedAt", sbn.postTime).put("dismissible", sbn.isClearable)
+            .put("audible", audible(sbn))
+            .put("onlyAlertOnce", n.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
             .put("kind", kind).put("lines", JSONArray(lines)).put("messages", JSONArray(messages))
             .put("ongoing", n.flags and Notification.FLAG_ONGOING_EVENT != 0)
             .put("groupSummary", n.flags and Notification.FLAG_GROUP_SUMMARY != 0)
@@ -118,6 +122,24 @@ internal class NotificationCapture(
         val bytes = MessageDigest.getInstance("SHA-256").digest(version.toString().toByteArray())
         json.put("revision", bytes.joinToString("") { "%02x".format(it) })
         return CapturedNotice(json, actions, n.contentIntent, contentToken).also { captured[sbn.key] = it }
+    }
+    // Android resolves DND per notification, including app/conversation/channel exceptions.
+    // Do not reconstruct the user's DND policy or treat all of DND as silent.
+    // Ranking also exposes the channel's user-selected sound.
+    // Missing/redacted ranking fails closed; silent notices still mirror normally.
+    private fun audible(sbn: StatusBarNotification): Boolean {
+        val listener = context as? NotificationListenerService ?: return false
+        val ranking = NotificationListenerService.Ranking()
+        if (!listener.currentRanking.getRanking(sbn.key, ranking)) return false
+        if (!ranking.matchesInterruptionFilter()) return false
+        val n = sbn.notification
+        if (ranking.importance < NotificationManager.IMPORTANCE_DEFAULT || ranking.channel?.sound == null) return false
+        if (sbn.isGroup) {
+            val summary = n.flags and Notification.FLAG_GROUP_SUMMARY != 0
+            if (n.groupAlertBehavior == Notification.GROUP_ALERT_SUMMARY && !summary) return false
+            if (n.groupAlertBehavior == Notification.GROUP_ALERT_CHILDREN && summary) return false
+        }
+        return true
     }
     private fun describe(handle: CapturedAction, includeIcon: Boolean): JSONObject {
         val action = handle.action

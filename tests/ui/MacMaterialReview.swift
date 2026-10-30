@@ -7,6 +7,25 @@ import PhoneCheckCore
 struct MaterialReview {
     static func main() {
         let app = NSApplication.shared
+        if CommandLine.arguments.contains("--toast-review") {
+            app.setActivationPolicy(.accessory)
+            let testbed = NotificationTestbed()
+            testbed.show(.messaging)
+            let controller = NotificationToastController(allowsPreview: { true })
+            let screen = NSScreen.main!
+            let anchor = NSRect(x: screen.visibleFrame.midX, y: screen.visibleFrame.maxY, width: 24, height: 24)
+            controller.show(testbed.notices[0], anchor: anchor, screen: screen, commands: testbed.commands, open: {})
+            controller.panelForChecks?.makeKeyAndOrderFront(nil)
+            let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+                controller.show(testbed.notices[0], anchor: anchor, screen: screen, commands: testbed.commands, open: {})
+            }
+            withExtendedLifetime((controller, testbed, timer)) { app.run() }
+            return
+        }
+        if CommandLine.arguments.contains("--alert-checks") {
+            runAlertChecks()
+            return
+        }
         if CommandLine.arguments.contains("--search-motion-checks") {
             runSearchMotionChecks()
             return
@@ -86,7 +105,8 @@ struct MaterialReview {
                               styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "Phone Check — Material Review"
         window.contentView = NSHostingView(rootView: Group {
-            if CommandLine.arguments.contains("--testbed") { NotificationTestbedView() }
+            if CommandLine.arguments.contains("--alert-review") { AlertReview() }
+            else if CommandLine.arguments.contains("--testbed") { NotificationTestbedView() }
             else if CommandLine.arguments.contains("--battery") { BatteryReview() }
             else if CommandLine.arguments.contains("--media-review") { MediaReview() }
             else if CommandLine.arguments.contains("--pairing-review") { PairingReview() }
@@ -423,4 +443,99 @@ private struct MediaReview: View {
             model.showPreview([music, podcast] + NotificationFixtures.make(.text), battery: BatteryStatus(percentage: 73, charging: false))
         }
     }
+}
+
+private struct AlertReview: View {
+    var body: some View {
+        VStack(spacing: 28) {
+            HStack(spacing: 24) {
+                Image(nsImage: MenuBarIcon.image(hasNew: false))
+                Image(nsImage: MenuBarIcon.image(hasNew: true))
+            }.padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            ForEach([ColorScheme.light, .dark], id: \.self) { scheme in
+                NotificationToast(notice: NotificationFixtures.make(.messaging)[0], commands: NotificationTestbed().commands,
+                                  open: {}, hide: {}, hover: { _ in })
+                    .environment(\.colorScheme, scheme).frame(width: 444, height: 150)
+            }
+        }.padding(30)
+    }
+}
+
+private func runAlertChecks() {
+    let screen = NSScreen.main!
+    let anchor = NSRect(x: screen.visibleFrame.midX, y: screen.visibleFrame.maxY + 2, width: 24, height: 24)
+    var allowed = false
+    let controller = NotificationToastController(allowsPreview: { allowed })
+    let notice = NotificationFixtures.make(.messaging)[0]
+    var sent: [Message] = []
+    let commands = NotificationCommandController(current: { _ in notice }, connected: { true }, send: { sent.append($0) })
+    var openCount = 0
+    func show() { controller.show(notice, anchor: anchor, screen: screen, commands: commands, open: { openCount += 1 }) }
+    func settle(_ seconds: Double) { RunLoop.main.run(until: Date().addingTimeInterval(seconds)) }
+    show()
+    precondition(!controller.isVisibleForChecks, "Focus must suppress new previews")
+    allowed = true; show(); settle(0.3)
+    precondition(controller.isVisibleForChecks && !controller.isKeyForChecks, "Preview must not take keyboard focus")
+    let collapsedHeight = (controller.panelForChecks!.contentView as! NotificationPaneSurface).contentFrame.height
+    controller.expandForChecks(notice.key, true); settle(0.6)
+    precondition(controller.expandedForChecks.contains(notice.key) && openCount == 0, "Expansion must remain local to the preview")
+    precondition((controller.panelForChecks!.contentView as! NotificationPaneSurface).contentFrame.height > collapsedHeight + 30,
+                 "Expanded content must resize the preview and backdrop")
+    controller.show(notice, anchor: anchor, screen: screen, commands: commands, open: { openCount += 1 }); settle(0.3)
+    precondition(controller.expandedForChecks.contains(notice.key), "Expansion must survive scroll hosting updates")
+    controller.expandForChecks(notice.key, false); settle(0.4)
+    allowed = false; settle(0.4)
+    precondition(!controller.isVisibleForChecks, "Focus must close an already visible preview")
+    allowed = true; show(); controller.reconcile([])
+    precondition(!controller.isVisibleForChecks, "Phone removal must clear a preview")
+    show(); var updated = notice; updated.revision = "changed"
+    controller.reconcile([updated])
+    precondition(!controller.isVisibleForChecks, "Updates must not leave stale preview text")
+    show(); settle(0.3)
+    let swipePanel = controller.panelForChecks as! NotificationToastPanel
+    swipePanel.hideAll()
+    precondition(!controller.isVisibleForChecks && sent.isEmpty, "Upward hide must not send phone dismissal")
+    show(); let exiting = controller.panelForChecks!
+    let originalFrame = exiting.frame
+    controller.hideUpward()
+    precondition(sent.isEmpty, "Hiding must not send a phone command")
+    show(); settle(0.4)
+    precondition(controller.isVisibleForChecks, "Old exit completion must not close a new preview")
+    precondition(!exiting.isVisible, "The hidden preview must finish its upward exit")
+    if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        precondition(exiting.frame.minY > originalFrame.minY, "Hide must move upward")
+    }
+    commands.dismiss(notice)
+    precondition(sent.last?.type == "dismiss" && sent.last?.key == notice.key, "Cross must send the real phone dismissal command")
+    precondition(controller.isVisibleForChecks, "Dismissal must await phone confirmation")
+    commands.notificationRemoved(notice.key)
+    controller.reconcile([])
+    precondition(!controller.isVisibleForChecks)
+    show()
+    var second = notice; second.key = "burst-second"
+    var third = notice; third.key = "burst-third"
+    var fourth = notice; fourth.key = "burst-fourth"
+    for item in [second, third, fourth] { controller.show(item, anchor: anchor, screen: screen, commands: commands, open: {}) }
+    precondition(controller.keysForChecks.count == 4, "Bursts must retain every live preview without replacement")
+    controller.show(fourth, anchor: anchor, screen: screen, commands: commands, open: {})
+    precondition(controller.keysForChecks.count == 4, "Repeated keys must update in place")
+    controller.hideForChecks(third.key)
+    precondition(controller.keysForChecks.count == 3 && !controller.keysForChecks.contains(third.key))
+    controller.reconcile([notice, second])
+    precondition(controller.keysForChecks.count == 2, "Phone removals must reconcile individual cards")
+    settle(6.5)
+    precondition(!controller.isVisibleForChecks, "Preview must disappear automatically")
+    let model = Companion(startServices: false)
+    let pane = NotificationPaneController(model: model)
+    precondition(pane.statusButtonForChecks.title.isEmpty, "Menu bar must never display a count")
+    show(); let fadingPreview = controller.panelForChecks!
+    let fadingFrame = fadingPreview.frame
+    controller.fadeOutForPane()
+    pane.show(animated: true); settle(0.4)
+    precondition(!fadingPreview.isVisible && fadingPreview.frame == fadingFrame,
+                 "Opening the pane must crossfade the preview without an upward dismissal")
+    precondition(model.notificationsVisible && !model.hasNewNotifications)
+    pane.hide()
+    precondition(!model.notificationsVisible)
+    print("Preview Focus gating, live suppression, no-key presentation, update/removal cleanup, timeout, and menu-bar checks passed")
 }

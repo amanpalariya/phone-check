@@ -6,6 +6,15 @@ import PhoneCheckCore
 func runTestbedChecks() {
     runActionFeedbackChecks()
     runSeekPresentationChecks()
+    let previewModel = NotificationTestbed()
+    var previews: [Notice] = []
+    let previewSubscription = previewModel.previewEvents.sink { previews = $0 }
+    previewModel.preview(burst: false)
+    precondition(previews.count == 1 && previews[0].key == NotificationFixtures.make(.text)[0].key)
+    previewModel.preview(burst: true)
+    precondition(previews.count == 3 && Set(previews.map(\.key)).count == 3)
+    precondition(previews.allSatisfy { item in previewModel.notices.contains { $0.key == item.key && $0.revision == item.revision } })
+    previewSubscription.cancel()
     let model = NotificationTestbed()
     func settle() { RunLoop.main.run(until: Date().addingTimeInterval(0.5)) }
     for kind in NotificationFixtures.Kind.allCases {

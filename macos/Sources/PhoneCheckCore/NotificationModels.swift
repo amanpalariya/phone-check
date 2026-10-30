@@ -56,6 +56,8 @@ public struct Notice: Codable, Equatable, Identifiable {
     public var ongoing: Bool?
     public var groupKey: String?
     public var groupSummary: Bool?
+    public var audible: Bool?
+    public var onlyAlertOnce: Bool?
     public var openable: Bool?
     public var actions: [NoticeAction]?
     public var id: String { key }

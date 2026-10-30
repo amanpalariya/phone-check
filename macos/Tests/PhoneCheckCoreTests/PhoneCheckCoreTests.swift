@@ -17,8 +17,49 @@ struct PhoneCheckCoreTests {
         try tests.testSummaryFirstMessageUpdatesAcrossApps()
         try tests.testBatteryMessage()
         try tests.testMediaTimelineAndNotificationSeparation()
-        print("12 core checks passed")
+        try tests.testUncheckedNotificationsAndPreviewPolicy()
+        print("13 core checks passed")
         try FirebaseChecks.run()
+    }
+    func testUncheckedNotificationsAndPreviewPolicy() throws {
+        var unread = UncheckedNotifications()
+        var first = notice(key: "first")
+        unread.reconcile([first])
+        try check(!unread.hasNew) // Initial/reconnect snapshots never create unread alerts.
+        unread.receive(first, previous: nil, checking: false)
+        try check(unread.hasNew)
+        unread.check()
+        unread.receive(first, previous: first, checking: false)
+        try check(!unread.hasNew)
+        var update = first; update.revision = String(repeating: "b", count: 64)
+        unread.receive(update, previous: first, checking: true)
+        try check(!unread.hasNew)
+        unread.receive(update, previous: first, checking: false)
+        unread.reconcile([update])
+        try check(unread.hasNew)
+        unread.reconcile([])
+        try check(!unread.hasNew)
+        var summary = first; summary.groupSummary = true
+        var media = first; media.kind = "media"
+        unread.receive(summary, previous: nil, checking: false)
+        unread.receive(media, previous: nil, checking: false)
+        try check(!unread.hasNew)
+        try check(!AlertPolicy.shouldPreview(first, previous: nil)) // Older peers lack sound metadata.
+        first.audible = true
+        try check(AlertPolicy.shouldPreview(first, previous: nil))
+        first.onlyAlertOnce = true
+        try check(AlertPolicy.shouldPreview(first, previous: nil))
+        try check(!AlertPolicy.shouldPreview(first, previous: first))
+        first.audible = false
+        try check(!AlertPolicy.shouldPreview(first, previous: nil))
+        try check(!AlertPolicy.shouldPreview(summary, previous: nil))
+        try check(!AlertPolicy.shouldPreview(media, previous: nil))
+        try check(AlertPolicy.focusAllowsPreview(authorized: true, isFocused: false))
+        try check(!AlertPolicy.focusAllowsPreview(authorized: true, isFocused: true))
+        try check(!AlertPolicy.focusAllowsPreview(authorized: true, isFocused: nil))
+        try check(!AlertPolicy.focusAllowsPreview(authorized: false, isFocused: false))
+        let decoded = try JSONDecoder().decode(Notice.self, from: JSONEncoder().encode(first))
+        try check(decoded.audible == false && decoded.onlyAlertOnce == true)
     }
     func testMediaTimelineAndNotificationSeparation() throws {
         var media = notice(key: "player")

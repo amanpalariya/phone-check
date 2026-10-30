@@ -2,11 +2,13 @@ import AppKit
 import SwiftUI
 import Network
 import UserNotifications
+import Intents
+import Combine
 import PhoneCheckCore
 
 enum ConnectionRoute { case local, cloud }
 
-final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
+final class Companion: NSObject, ObservableObject {
     @Published private(set) var status = "Not paired"
     @Published private(set) var notices: [Notice] = []
     var notificationCount: Int { NotificationSection.count(notices) }
@@ -44,7 +46,13 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     private var pairingTimer: Timer?
     private var syncDeadline: Timer?
     private let center = UNUserNotificationCenter.current()
-    private lazy var alerts = NotificationAlerts(center: center)
+    let previewEvents = PassthroughSubject<Notice?, Never>()
+    @Published private(set) var hasNewNotifications = false
+    private var unread = UncheckedNotifications()
+    var notificationsVisible = false
+    func checkedNotifications() {
+        unread.check(); hasNewNotifications = false
+    }
     private(set) lazy var commands = NotificationCommandController(
         current: { [weak self] key in self?.state.items[key] },
         connected: { [weak self] in self?.connected == true },
@@ -55,8 +63,6 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         usesLocalNetwork = localNetworkForTesting
         super.init()
         guard startServices else { return }
-        center.delegate = self
-        alerts.register([])
         // Clearing or timing out a Mac alert never dismisses it on the phone.
         center.removeAllDeliveredNotifications()
         center.removeAllPendingNotificationRequests()
@@ -217,7 +223,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         credentials = nil; phoneName = nil; paired = false; pairing = false; pairingExpiresAt = nil
         pairingTimer?.invalidate()
         active?.close(); Array(candidates.values).forEach { $0.close() }
-        clearActive(); status = "Not paired"; error = nil
+        clearActive(); checkedNotifications(); status = "Not paired"; error = nil
         accountChanged()
     }
     private func clearCloudPairing() {
@@ -226,6 +232,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         cloud?.stop(); cloud = nil; active?.close(); active = nil; clearActive()
         do { try Credentials.clear() } catch { self.error = "Could not clear pairing"; return }
         credentials = nil; paired = false; pairing = false; phoneName = nil
+        checkedNotifications()
         pairingExpiresAt = nil; pairingTimer?.invalidate(); status = "Not paired"
     }
     private func startCloud() {
@@ -398,7 +405,6 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             self.battery = battery
         case "attention":
             updateAttention(message)
-            if phoneAttention.inUse == true { center.removeAllPendingNotificationRequests() }
         case "upsert":
             updateAttention(message)
             guard state.synchronized, let item = message.item, validNotice(item),
@@ -407,11 +413,17 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
             if state.upsert(item) {
                 let contentChanged = previous?.revision != item.revision
                 if contentChanged { commands.notificationChanged(item) }
+                unread.receive(item, previous: previous, checking: notificationsVisible)
                 publish()
-                if alertsAllowed && contentChanged && !item.isMedia && item.groupSummary != true && AlertPolicy.shouldAlert(
+                if contentChanged && AlertPolicy.shouldPreview(item, previous: previous) && AlertPolicy.shouldAlert(
                     phoneInUse: phoneAttention.inUse ?? message.phoneInUse, sentAt: message.sentAt,
                     now: Int64(Date().timeIntervalSince1970 * 1000)) {
-                    alerts.deliver(item, isNew: previous == nil) { [weak self] in self?.error = "Mac notification unavailable" }
+                    previewEvents.send(item)
+                } else if contentChanged {
+                    if phoneAttention.inUse == true { PreviewDiagnostics.record("Suppressed: phone in use") }
+                    else if item.audible != true { PreviewDiagnostics.record("Suppressed: silent or unknown sound metadata") }
+                    else if item.onlyAlertOnce == true && previous != nil { PreviewDiagnostics.record("Suppressed: only-alert-once update") }
+                    else { PreviewDiagnostics.record("Suppressed: summary, media, or stale event") }
                 }
             }
         case "remove":
@@ -431,6 +443,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     private func updateAttention(_ message: Message) {
         phoneAttention.update(inUse: message.phoneInUse, sentAt: message.sentAt,
                               now: Int64(Date().timeIntervalSince1970 * 1000))
+        if phoneAttention.inUse == true { previewEvents.send(nil) }
     }
     private func completeSnapshot(_ items: [Notice]) {
         state.snapshot(items); staged = nil; stagedBytes = 0
@@ -475,15 +488,13 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         notices = state.items.values.sorted {
             $0.postedAt == $1.postedAt ? $0.key < $1.key : $0.postedAt > $1.postedAt
         }
-        // Android summaries repeat their children's content. They remain active
-        // for group capabilities, but must not leave a second native Mac alert.
-        for notice in notices where notice.groupSummary == true || notice.isMedia { removeAlert(notice.key) }
-        alerts.register(notices.filter { !$0.isMedia })
+        unread.reconcile(notices)
+        hasNewNotifications = unread.hasNew
     }
     private func clearActive() {
         connected = false; connectionRoute = nil; battery = nil; state.reset(); phoneAttention = PhoneAttentionState()
         notices = []; staged = nil; stagedBytes = 0
-        commands.reset(); alerts.register([])
+        commands.reset(); previewEvents.send(nil)
         syncDeadline?.invalidate(); syncDeadline = nil
         center.removeAllDeliveredNotifications(); center.removeAllPendingNotificationRequests()
     }
@@ -492,46 +503,19 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
         center.removePendingNotificationRequests(withIdentifiers: [key])
     }
     func refreshAuthorization() {
-        #if PHONECHECK_VISUAL_TEST
-        return
-        #else
-        center.getNotificationSettings { [weak self] settings in
-            DispatchQueue.main.async { self?.alertsAllowed = settings.authorizationStatus == .authorized }
-        }
-        #endif
+        alertsAllowed = INFocusStatusCenter.default.authorizationStatus == .authorized
     }
     func allowAlerts() {
-        center.getNotificationSettings { [weak self] settings in
-            guard let self else { return }
-            if settings.authorizationStatus == .denied {
-                DispatchQueue.main.async { self.openNotificationSettings() }
-            } else {
-                self.center.requestAuthorization(options: [.alert]) { [weak self] allowed, _ in
-                    DispatchQueue.main.async { self?.alertsAllowed = allowed }
-                }
+        let focus = INFocusStatusCenter.default
+        if focus.authorizationStatus == .denied || focus.authorizationStatus == .restricted {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Focus")!)
+        } else {
+            focus.requestAuthorization { [weak self] _ in
+                DispatchQueue.main.async { self?.refreshAuthorization() }
             }
         }
     }
-    func openNotificationSettings() {
-        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
-    }
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
-                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-        DispatchQueue.main.async { [weak self] in
-            completionHandler(self?.phoneAttention.inUse == true ? [] : [.banner, .list])
-        }
-    }
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
-                                withCompletionHandler completionHandler: @escaping () -> Void) {
-        DispatchQueue.main.async { [weak self] in
-            defer { completionHandler() }
-            guard let key = response.notification.request.content.userInfo["key"] as? String,
-                  let revision = response.notification.request.content.userInfo["revision"] as? String else { return }
-            self?.handleNotificationAction(response.actionIdentifier, key: key, revision: revision,
-                text: (response as? UNTextInputNotificationResponse)?.userText)
-        }
-    }
-    /// Shared by native banner responses and the integration harness.
+    /// Legacy action routing used by the integration harness.
     func handleNotificationAction(_ identifier: String, key: String, revision: String, text: String? = nil) {
         guard let item = state.items[key], item.revision == revision else {
             error = "Notification changed or is no longer active"
@@ -566,6 +550,7 @@ final class Companion: NSObject, ObservableObject, UNUserNotificationCenterDeleg
     }
     @objc private func willSleep() {
         sleeping = true
+        previewEvents.send(nil)
         updateBackgroundActivity()
         listenerRetry?.invalidate(); listenerRetry = nil
         listener?.cancel(); listener = nil; listening = false

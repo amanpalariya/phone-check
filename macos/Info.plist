@@ -12,5 +12,6 @@
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>NSLocalNetworkUsageDescription</key><string>Connect to your paired Android phone to mirror notifications.</string>
+    <key>NSFocusStatusUsageDescription</key><string>Show phone notification previews only when Focus is off.</string>
     <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

@@ -7,6 +7,17 @@ import java.io.DataInputStream
 
 class WireTest {
     private val key = ByteArray(32) { it.toByte() }
+    @Test fun reloadedPairingPreservesConnectionIdentity() {
+        val pairing = Pairing("192.168.1.8", 47831, key, "peer")
+        val restored = Pairing.restore(pairing.json())
+        assertNotSame(pairing.secret, restored.secret)
+        assertTrue(pairing.sameConnection(restored))
+        assertFalse(pairing.sameConnection(restored.copy(secret = ByteArray(32))))
+        assertFalse(pairing.sameConnection(restored.copy(host = "192.168.1.9")))
+        assertFalse(pairing.sameConnection(restored.copy(peer = "other")))
+        assertFalse(pairing.sameConnection(restored.copy(ownerUID = "owner", pairID = "cloud-pair")))
+        assertFalse(pairing.sameConnection(null))
+    }
     @Test fun directionKeyGoldenVector() {
         val material = key + ByteArray(32) { (it + 32).toByte() } + "00000000-0000-0000-0000-000000000001".toByteArray()
         assertEquals("39afc19d399f1c164d12f101a63f3dbe9a6f0c8706bf9fb6e82e492fc8bfcb58",

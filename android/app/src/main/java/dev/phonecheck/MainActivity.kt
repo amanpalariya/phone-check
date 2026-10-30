@@ -21,13 +21,13 @@ class MainActivity : ComponentActivity() {
     private var authError by mutableStateOf<String?>(null)
     private var access by mutableStateOf(false)
     private val authListener = com.google.firebase.auth.FirebaseAuth.AuthStateListener {
-        signedIn = it.currentUser != null; refresh(); BridgeState.service?.restart()
+        signedIn = it.currentUser != null; refresh(); BridgeState.service?.refreshConnection()
     }
     private var network by mutableStateOf(false)
     private var networkBlocked by mutableStateOf(false)
     private val networkPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         networkBlocked = !granted && !shouldShowRequestPermissionRationale("android.permission.ACCESS_LOCAL_NETWORK")
-        refresh(); BridgeState.service?.restart()
+        refresh(); BridgeState.service?.refreshConnection()
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
                                     code = ""; error = null
                                     BridgeState.paired = true; BridgeState.localOnly = pairing.isLocalOnly
                                     BridgeState.status = "Allow notification access"
-                                    BridgeState.service?.restart()
+                                    BridgeState.service?.refreshConnection()
                                 }.onFailure { error = "Could not save pairing. Pair again on your Mac." }
                             Unit
                         }
@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
                         } else if (uid != null) CloudAccount.root(uid).removeValue { failure, _ ->
                             if (failure != null) error = "Could not sign out. Try again."
                             else runCatching { PairingStore(this).clear() }.onSuccess {
-                                CloudAccount.auth.signOut(); BridgeState.service?.restart()
+                                CloudAccount.auth.signOut(); BridgeState.service?.refreshConnection()
                             }.onFailure { error = "Could not clear pairing" }
                         }
                     },
@@ -128,11 +128,11 @@ class MainActivity : ComponentActivity() {
                             CloudAccount.root(uid).removeValue { failure, _ ->
                                 if (failure != null) { error = "Could not unpair. Try again." }
                                 else runCatching { PairingStore(this).clear() }.onSuccess {
-                                    BridgeState.paired = false; BridgeState.service?.restart()
+                                    BridgeState.paired = false; BridgeState.service?.refreshConnection()
                                 }.onFailure { error = "Could not clear pairing" }
                             }
                         } else runCatching { PairingStore(this).clear() }.onSuccess {
-                            BridgeState.paired = false; BridgeState.service?.restart()
+                            BridgeState.paired = false; BridgeState.service?.refreshConnection()
                         }.onFailure { error = "Could not clear pairing" }
                     }
                 )
@@ -140,7 +140,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     override fun onDestroy() { CloudAccount.auth.removeAuthStateListener(authListener); super.onDestroy() }
-    override fun onResume() { super.onResume(); refresh(); BridgeState.service?.restart() }
+    override fun onResume() { super.onResume(); refresh(); BridgeState.service?.refreshConnection() }
     private fun refresh() {
         access = getSystemService(NotificationManager::class.java).isNotificationListenerAccessGranted(
             ComponentName(this, NotificationBridge::class.java))

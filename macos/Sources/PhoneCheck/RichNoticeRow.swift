@@ -12,6 +12,8 @@ struct RichNoticeRow: View {
     let summary: Notice?
     @StateObject private var presentation: RowPresentation
     private let expansion: Binding<Bool>?
+    private let openPreview: (() -> Void)?
+    private let swipeToDismiss: Bool
     private var expanded: Bool {
         get { expansion?.wrappedValue ?? presentation.expanded }
         nonmutating set {
@@ -20,7 +22,9 @@ struct RichNoticeRow: View {
         }
     }
 
-    init(notice: Notice, commands: NotificationCommandController, initiallyExpanded: Bool = false, summary: Notice? = nil, expansion: Binding<Bool>? = nil) {
+    init(notice: Notice, commands: NotificationCommandController, initiallyExpanded: Bool = false, summary: Notice? = nil, expansion: Binding<Bool>? = nil, openPreview: (() -> Void)? = nil, swipeToDismiss: Bool = true) {
+        self.openPreview = openPreview
+        self.swipeToDismiss = swipeToDismiss
         self.expansion = expansion
         self.notice = notice
         self.commands = commands
@@ -51,9 +55,9 @@ struct RichNoticeRow: View {
                             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     }
                     content.textSelection(.enabled)
-                }
+                }.modifier(PreviewContentOpen(action: openPreview))
             } else {
-                NotificationPreview(notice: notice) {
+                NotificationPreview(notice: notice, open: openPreview) {
                     expansionButton
                 }
             }
@@ -105,7 +109,7 @@ struct RichNoticeRow: View {
         .padding(.top, verticalPadding)
         .padding(.bottom, showsFooter ? 4 : verticalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(NotificationCard(canDismiss: notice.dismissible && !pending) { commands.dismiss(notice) })
+        .modifier(NotificationCard(canDismiss: notice.dismissible && !pending, dismiss: { commands.dismiss(notice) }, swipeToDismiss: swipeToDismiss))
         .geometryGroup()
         .notificationMotion(value: expanded)
         .notificationMotion(value: notice)
@@ -248,5 +252,14 @@ private struct NoticePreviewText: View {
         Text(text).font(.subheadline).foregroundStyle(.primary)
             .lineLimit(expanded ? nil : limit)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// The content click target excludes expansion, footer actions, replies, and dismissal.
+private struct PreviewContentOpen: ViewModifier {
+    var action: (() -> Void)?
+    @ViewBuilder func body(content: Content) -> some View {
+        if let action { content.contentShape(Rectangle()).onTapGesture(perform: action) }
+        else { content }
     }
 }

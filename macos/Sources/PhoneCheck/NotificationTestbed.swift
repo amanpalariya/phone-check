@@ -1,5 +1,6 @@
 #if DEBUG
 import SwiftUI
+import Combine
 import PhoneCheckCore
 
 /// A simulated phone shared by the testbed window and optional floating-pane preview.
@@ -8,6 +9,7 @@ final class NotificationTestbed: ObservableObject {
     @Published private(set) var receipt = ""
     @Published var result = "sent"
     @Published var showsInPane = false
+    let previewEvents = PassthroughSubject<[Notice], Never>()
     private var generation = 0
     lazy var commands = NotificationCommandController(
         current: { [weak self] key in self?.notices.first { $0.key == key } },
@@ -24,6 +26,12 @@ final class NotificationTestbed: ObservableObject {
             notices.removeAll { $0.key == sample.key }
             notices.append(sample)
         }
+    }
+    func preview(burst: Bool) {
+        let kinds: [NotificationFixtures.Kind] = burst ? [.text, .messaging, .picture] : [.text]
+        kinds.forEach(show)
+        let keys = Set(kinds.flatMap { NotificationFixtures.make($0).map(\.key) })
+        previewEvents.send(notices.filter { keys.contains($0.key) })
     }
     func showAll() {
         clear()
@@ -81,6 +89,12 @@ struct NotificationTestbedView: View {
                 Toggle("Show in notification pane", isOn: $model.showsInPane)
                     .toggleStyle(.switch).controlSize(.small)
                 Text("Click Phone Check in the menu bar.").font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Send preview") { model.preview(burst: false) }
+                    Button("Send 3") { model.preview(burst: true) }
+                }
+                Text("Preview tests ignore Focus. Dismissals are simulated.")
+                    .font(.caption).foregroundStyle(.secondary)
                 ScrollView {
                     VStack(spacing: 4) {
                         ForEach(NotificationFixtures.Kind.allCases) { kind in

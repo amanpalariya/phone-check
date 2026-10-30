@@ -56,6 +56,9 @@ class NotificationBridge : NotificationListenerService() {
     } }
     private var transport: NotificationTransport? = null
     private var requiresLocalNetwork = false
+    private var runningPairing: Pairing? = null
+    private var runningUser: String? = null
+    private var runningLocalAccess = false
     private val callbacks = TransportCallbacks(::transportConnected, ::transportMessage, ::transportDisconnected, ::cloudPairingRevoked)
     private var createTransport: (Pairing, TransportCallbacks) -> NotificationTransport = { pairing, callbacks ->
         if (pairing.isLocalOnly) {
@@ -112,7 +115,7 @@ class NotificationBridge : NotificationListenerService() {
             onResult = { id, status -> send(JSONObject().put("type", "result").put("command", id).put("status", status)) },
             onProtocolError = { transport?.disconnect() }, onChanged = { publish(it) })
     }
-    private val authListener = com.google.firebase.auth.FirebaseAuth.AuthStateListener { restart() }
+    private val authListener = com.google.firebase.auth.FirebaseAuth.AuthStateListener { refreshConnection() }
     override fun onCreate() {
         super.onCreate(); BridgeState.service = this
         CloudAccount.auth.addAuthStateListener(authListener)
@@ -143,10 +146,22 @@ class NotificationBridge : NotificationListenerService() {
     private fun allowed() = !(requiresLocalNetwork || BridgeState.localOnly) || localAllowed()
     private fun localAllowed() = Build.VERSION.SDK_INT < 37 ||
         checkSelfPermission("android.permission.ACCESS_LOCAL_NETWORK") == PackageManager.PERMISSION_GRANTED
+    /** Activity/auth refreshes must not replace a healthy or reconnecting session. */
+    fun refreshConnection() {
+        check(Looper.myLooper() == Looper.getMainLooper())
+        val pairing = PairingStore(this).load()
+        val sameAccount = pairing?.isLocalOnly == true || runningUser == CloudAccount.auth.currentUser?.uid
+        if (ready && transport != null && pairing?.sameConnection(runningPairing) == true &&
+            sameAccount && runningLocalAccess == localAllowed() && allowed()) return
+        restart()
+    }
     fun restart() {
         check(Looper.myLooper() == Looper.getMainLooper())
-        stopLink()
+        stopLink(); transport?.close(); transport = null
         val pairing = PairingStore(this).load()
+        runningPairing = pairing
+        runningUser = CloudAccount.auth.currentUser?.uid
+        runningLocalAccess = localAllowed()
         BridgeState.paired = pairing != null
         BridgeState.localOnly = pairing?.isLocalOnly == true
         when {
@@ -155,7 +170,6 @@ class NotificationBridge : NotificationListenerService() {
             !ready -> BridgeState.status = "Allow notification access"
             !allowed() -> BridgeState.status = "Allow local network"
             else -> {
-                transport?.close()
                 transport = createTransport(pairing, callbacks)
                 transport?.start()
             }

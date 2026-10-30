@@ -207,7 +207,7 @@ struct CompanionView: View {
             if !model.alertsAllowed {
                 HStack(spacing: 10) {
                     Image(systemName: "bell.badge").foregroundStyle(.primary)
-                    Text("Mac alerts off").font(.subheadline)
+                    Text("Previews need Focus access").font(.subheadline)
                     Spacer()
                     Button(action: model.allowAlerts) {
                         Text("Enable").foregroundStyle(.primary)
